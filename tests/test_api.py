@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
+import httpx
 import numpy as np
-from fastapi.testclient import TestClient
 
 import app as api
 from tagrec.interface import Suggestion
@@ -108,21 +109,35 @@ def test_acl_file_and_default_deny(tmp_path: Path, monkeypatch):
 
 def test_http_health_setup_and_route_contracts(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(api, "ARTIFACTS", tmp_path)
-    with TestClient(api.app) as client:
-        health = client.get("/health")
-        assert health.status_code == 200
-        assert health.json()["status"] == "setup-required"
-        assert client.post("/suggest", json={"event": {}}).status_code == 503
 
-        runtime = make_ready(tmp_path, monkeypatch)
-        runtime.acl = {"alice": {"allowed-1", "allowed-2"}}
-        client.app.state.runtime = runtime
-        suggested = client.post("/suggest", json={"event": {"Event": {"info": "x"}}})
-        assert suggested.status_code == 200
-        assert suggested.json()["suggestions"][0]["tag"] == "tag:a"
-        assert client.post("/similar", json={"event": {}}).status_code == 401
-        similar = client.post(
-            "/similar", json={"event": {}}, headers={"X-Actor": "alice"}
-        )
-        assert similar.status_code == 200
-        assert similar.json()["read_only"] is True
+    async def scenario():
+        async with api.lifespan(api.app):
+            transport = httpx.ASGITransport(app=api.app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                health = await client.get("/health")
+                assert health.status_code == 200
+                assert health.json()["status"] == "setup-required"
+                response = await client.post("/suggest", json={"event": {}})
+                assert response.status_code == 503
+
+                runtime = make_ready(tmp_path, monkeypatch)
+                runtime.acl = {"alice": {"allowed-1", "allowed-2"}}
+                api.app.state.runtime = runtime
+                suggested = await client.post(
+                    "/suggest", json={"event": {"Event": {"info": "x"}}}
+                )
+                assert suggested.status_code == 200
+                assert suggested.json()["suggestions"][0]["tag"] == "tag:a"
+                response = await client.post("/similar", json={"event": {}})
+                assert response.status_code == 401
+                similar = await client.post(
+                    "/similar",
+                    json={"event": {}},
+                    headers={"X-Actor": "alice"},
+                )
+                assert similar.status_code == 200
+                assert similar.json()["read_only"] is True
+
+    asyncio.run(scenario())
