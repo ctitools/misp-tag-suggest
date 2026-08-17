@@ -1,84 +1,34 @@
 from __future__ import annotations
 
 import asyncio
-import gc
-import importlib.util
 import json
 import os
-import re
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-HERE = Path(__file__).resolve().parent
-MODEL_ROOT = Path(
-    os.getenv("MISP_RESEARCH_ROOT", HERE.parent / "misp-research")
-).resolve()
+from retrieval.retrieve import SemanticRetrievalSuggester
+from tagrec.canonicalize import canonicalize_event
+from tagrec.diversify import collapse_similar_neighbors
+
+ROOT = Path(__file__).resolve().parent
+ARTIFACTS = Path(os.getenv("RETRIEVAL_ARTIFACTS", ROOT / "artifacts/retrieval"))
 DEVICE = os.getenv("MODEL_DEVICE") or None
-
-if not (MODEL_ROOT / "models/09-hybrid-production/service.py").is_file():
-    raise RuntimeError(f"MISP_RESEARCH_ROOT is not a model checkout: {MODEL_ROOT}")
-
-sys.path.insert(0, str(MODEL_ROOT))
+SEARCH_DEPTH = int(os.getenv("SIMILAR_SEARCH_DEPTH", "5000"))
 
 
-def load_module(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
-        raise ImportError(path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-hybrid_module = load_module(
-    "misp_suggest_hybrid", MODEL_ROOT / "models/09-hybrid-production/service.py"
-)
-similar_module = load_module(
-    "misp_suggest_similar", MODEL_ROOT / "models/09-hybrid-production/similar_endpoint.py"
-)
-HybridV2Service = hybrid_module.HybridV2Service
-SimilarEventService = similar_module.SimilarEventService
-
-_LONG_HEX_RE = re.compile(r"[0-9a-fA-F]{8,}")
-_DIGITS_RE = re.compile(r"\d+")
-
-
-def normalized_info(text: str) -> str:
-    first = text.splitlines()[0] if text else ""
-    return _DIGITS_RE.sub("<N>", _LONG_HEX_RE.sub("<H>", first))
-
-
-def iter_jsonl(path: Path):
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                yield json.loads(line)
-
-
-class SuggestRequest(BaseModel):
+class EventRequest(BaseModel):
     event: dict[str, Any]
-    mode: Literal["full", "partial-info", "partial-25", "partial-50"] = "full"
     limit: int = Field(default=5, ge=1, le=10)
 
 
-class SimilarRequest(BaseModel):
-    event: dict[str, Any]
-    limit: int = Field(default=10, ge=1, le=20)
-
-
-class LocalSimilarRuntime:
-    """Load Track 02 for one request, then release it to bound memory."""
-
+class RetrievalRuntime:
     def __init__(self) -> None:
-        self.artifacts = MODEL_ROOT / "models/02-semantic-retrieval/artifacts-full"
-        self.display_rows: list[dict[str, Any]] | None = None
+        self._model: SemanticRetrievalSuggester | None = None
         self.allow_all = os.getenv("POC_ALLOW_ALL_SIMILAR") == "1"
         self.acl = self._load_acl(os.getenv("POC_ACL_FILE"))
 
@@ -89,93 +39,113 @@ class LocalSimilarRuntime:
         raw = json.loads(Path(path).read_text(encoding="utf-8"))
         return {str(actor): set(map(str, ids)) for actor, ids in raw.items()}
 
+    @property
+    def ready(self) -> bool:
+        return all(
+            (ARTIFACTS / name).is_file()
+            for name in ("params.json", "train_embeddings.npz", "index_meta.jsonl")
+        )
+
+    def model(self) -> SemanticRetrievalSuggester:
+        if not self.ready:
+            raise FileNotFoundError(
+                f"Retrieval artifacts are missing from {ARTIFACTS}; run retrieval.build_index"
+            )
+        if self._model is None:
+            self._model = SemanticRetrievalSuggester(ARTIFACTS, device=DEVICE)
+        return self._model
+
     def authorize(self, actor: str, event_id: str) -> bool:
         allowed = self.acl.get(actor, set())
         return self.allow_all or "*" in allowed or event_id in allowed
 
-    def _display(self) -> list[dict[str, Any]]:
-        if self.display_rows is not None:
-            return self.display_rows
+    @staticmethod
+    def input_row(event: dict[str, Any]) -> dict[str, str]:
+        return {"text": canonicalize_event(event)}
 
-        compact: dict[str, dict[str, Any]] = {}
-        for row in iter_jsonl(MODEL_ROOT / "data/processed/train.jsonl"):
-            text = str(row.get("text", ""))
-            first = text.splitlines()[0] if text else ""
-            compact[str(row["uuid"])] = {
-                "title": first.removeprefix("[INFO] "),
-                "orgc": str(row.get("orgc", "")),
-                "normalized_info": normalized_info(text),
-                "dup_cluster": str(row.get("dup_cluster", "")),
+    def suggest(self, event: dict[str, Any], limit: int) -> dict[str, Any]:
+        model = self.model()
+        rows = [self.input_row(event)]
+        values = model.suggest_many(rows, top_k=limit)[0]
+        accepted = model.event_acceptance_many(rows)[0]
+        suggestions = (
+            [{"tag": value.tag, "score": round(float(value.score), 4)} for value in values]
+            if accepted
+            else []
+        )
+        return {
+            "suggestions": suggestions,
+            "abstained": not suggestions,
+            "model_version": model.model_version,
+            "dataset_manifest_sha256": model.params["dataset_manifest_sha256"],
+        }
+
+    def similar(
+        self, event: dict[str, Any], actor: str, limit: int
+    ) -> dict[str, Any]:
+        model = self.model()
+        rows = [self.input_row(event)]
+        similarities, indices = model._search(rows, k=SEARCH_DEPTH)
+        visible: list[dict[str, Any]] = []
+        denied = 0
+        for score, index in zip(similarities[0], indices[0], strict=True):
+            if index < 0:
+                continue
+            metadata = dict(model.metadata[int(index)])
+            event_id = str(metadata.get("event_id", ""))
+            if not event_id or not self.authorize(actor, event_id):
+                denied += 1
+                continue
+            metadata["event_id"] = event_id
+            metadata["similarity"] = float(score)
+            visible.append(metadata)
+
+        diversified = collapse_similar_neighbors(visible, top_k=limit)
+        suggestions = [
+            {
+                key: row[key]
+                for key in (
+                    "event_id",
+                    "uuid",
+                    "date",
+                    "title",
+                    "labels",
+                    "similarity",
+                    "group_size",
+                )
+                if key in row
             }
-
-        rows = []
-        for meta in iter_jsonl(self.artifacts / "index_meta.jsonl"):
-            item = compact.get(str(meta.get("uuid")), {})
-            rows.append(
-                {
-                    "event_id": str(meta.get("event_id", "")),
-                    "uuid": str(meta.get("uuid", "")),
-                    "date": str(meta.get("date", "")),
-                    "tags": list(map(str, meta.get("labels", []))),
-                    **item,
-                }
-            )
-        self.display_rows = rows
-        return rows
-
-    def search(self, event: dict[str, Any], actor: str, top_k: int) -> dict[str, Any]:
-        display = self._display()
-        retrieval_module = load_module(
-            "misp_suggest_retrieval",
-            MODEL_ROOT / "models/02-semantic-retrieval/retrieve.py",
-        )
-        model = retrieval_module.SemanticRetrievalSuggester(
-            self.artifacts, device=DEVICE
-        )
-
-        def retrieve(raw_event: dict[str, Any], depth: int):
-            text = hybrid_module._canonical_text(raw_event)
-            similarities, indices = model._search([{"text": text}], k=depth)
-            return [
-                display[int(index)] | {"similarity": float(score)}
-                for score, index in zip(similarities[0], indices[0], strict=True)
-                if index >= 0
-            ]
-
-        try:
-            service = SimilarEventService(retrieve, self.authorize, search_depth=5000)
-            result = service.similar(event, actor, top_k)
-            result["suggestions"] = [
-                {
-                    key: row[key]
-                    for key in (
-                        "event_id",
-                        "uuid",
-                        "date",
-                        "title",
-                        "tags",
-                        "similarity",
-                        "group_size",
-                    )
-                    if key in row
-                }
-                for row in result["suggestions"]
-            ]
-            return result
-        finally:
-            del model
-            gc.collect()
+            for row in diversified
+        ]
+        return {
+            "suggestions": suggestions,
+            "read_only": True,
+            "writes_performed": 0,
+            "search_depth": SEARCH_DEPTH,
+            "acl_summary": {
+                "retrieved": len(indices[0]),
+                "allowed": len(visible),
+                "denied": denied,
+            },
+        }
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.hybrid = HybridV2Service(device=DEVICE)
-    app.state.similar = LocalSimilarRuntime()
+    app.state.runtime = RetrievalRuntime()
     app.state.inference_lock = asyncio.Lock()
     yield
 
 
-app = FastAPI(title="MISP Suggest PoC", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="MISP Suggest", version="0.2.0", lifespan=lifespan)
+
+
+def require_ready() -> None:
+    if not app.state.runtime.ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Retrieval index not built; run `uv run python -m retrieval.build_index`",
+        )
 
 
 @app.get("/", include_in_schema=False)
@@ -185,48 +155,32 @@ def root():
 
 @app.get("/health")
 def health():
-    version = app.state.hybrid.version
     return {
-        "status": "ok",
+        "status": "ok" if app.state.runtime.ready else "setup-required",
+        "artifacts_ready": app.state.runtime.ready,
+        "model_loaded": app.state.runtime._model is not None,
         "read_only": True,
-        "hybrid_version": version["hybrid_version"],
-        "parity": version["parity"],
     }
 
 
 @app.post("/suggest")
-async def suggest(request: SuggestRequest):
+async def suggest(request: EventRequest):
+    require_ready()
     async with app.state.inference_lock:
-        result = await asyncio.to_thread(
-            app.state.hybrid.suggest, request.event, request.mode, 50
+        return await asyncio.to_thread(
+            app.state.runtime.suggest, request.event, request.limit
         )
-
-    suggestions = [
-        {"tag": row["tag"], "score": round(float(row["score"]), 4)}
-        for row in result["suggestions"]
-        if row["threshold_pass"]
-    ][: request.limit]
-    version = result["model_version"]
-    return {
-        "suggestions": suggestions,
-        "abstained": not suggestions,
-        "mode": request.mode,
-        "model_version": {
-            "hybrid_version": version["hybrid_version"],
-            "params_sha256": version["params_sha256"],
-            "parity": version["parity"],
-        },
-    }
 
 
 @app.post("/similar")
 async def similar(
-    request: SimilarRequest,
+    request: EventRequest,
     x_actor: str | None = Header(default=None),
 ):
+    require_ready()
     if not x_actor:
         raise HTTPException(status_code=401, detail="X-Actor is required")
     async with app.state.inference_lock:
         return await asyncio.to_thread(
-            app.state.similar.search, request.event, x_actor, request.limit
+            app.state.runtime.similar, request.event, x_actor, request.limit
         )
