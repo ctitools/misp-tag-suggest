@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+from fastapi.testclient import TestClient
+
+import app as api
+from tagrec.interface import Suggestion
+
+
+class FakeRetrievalModel:
+    model_version = "fake@revision"
+    params = {"dataset_manifest_sha256": "manifest"}
+
+    def __init__(self):
+        self.metadata = [
+            {
+                "event_id": "denied",
+                "uuid": "d",
+                "date": "2025-01-01",
+                "title": "Repeated",
+                "labels": ["tag:a"],
+                "orgc": "org",
+                "normalized_info": "same",
+                "dup_cluster": "c1",
+            },
+            {
+                "event_id": "allowed-1",
+                "uuid": "a1",
+                "date": "2025-01-02",
+                "title": "Allowed repeated",
+                "labels": ["tag:a"],
+                "orgc": "org",
+                "normalized_info": "same",
+                "dup_cluster": "c2",
+            },
+            {
+                "event_id": "allowed-2",
+                "uuid": "a2",
+                "date": "2025-01-03",
+                "title": "Distinct",
+                "labels": ["tag:b"],
+                "orgc": "other",
+                "normalized_info": "different",
+                "dup_cluster": "c3",
+            },
+        ]
+        self.accept = True
+
+    def suggest_many(self, rows, top_k=10):
+        assert "Tag" not in rows[0]["text"]
+        return [[Suggestion("tag:a", 0.9, ("denied",), self.model_version)]]
+
+    def event_acceptance_many(self, rows):
+        return [self.accept]
+
+    def _search(self, rows, k=50):
+        return (
+            np.asarray([[0.99, 0.98, 0.8]], dtype=np.float32),
+            np.asarray([[0, 1, 2]], dtype=np.int64),
+        )
+
+
+def make_ready(tmp_path: Path, monkeypatch):
+    for name in ("params.json", "train_embeddings.npz", "index_meta.jsonl"):
+        (tmp_path / name).write_bytes(b"x")
+    monkeypatch.setattr(api, "ARTIFACTS", tmp_path)
+    runtime = api.RetrievalRuntime()
+    runtime._model = FakeRetrievalModel()
+    return runtime
+
+
+def test_runtime_suggests_and_abstains(tmp_path: Path, monkeypatch):
+    runtime = make_ready(tmp_path, monkeypatch)
+    event = {"Event": {"info": "Phishing", "Tag": [{"name": "must-not-leak"}]}}
+    result = runtime.suggest(event, 5)
+    assert result["suggestions"] == [{"tag": "tag:a", "score": 0.9}]
+    assert result["abstained"] is False
+    runtime._model.accept = False
+    result = runtime.suggest(event, 5)
+    assert result["suggestions"] == [] and result["abstained"] is True
+
+
+def test_runtime_filters_acl_before_diversification(tmp_path: Path, monkeypatch):
+    runtime = make_ready(tmp_path, monkeypatch)
+    runtime.acl = {"alice": {"allowed-1", "allowed-2"}}
+    result = runtime.similar({"Event": {"info": "query"}}, "alice", 10)
+    assert [row["event_id"] for row in result["suggestions"]] == [
+        "allowed-1",
+        "allowed-2",
+    ]
+    assert result["acl_summary"] == {"retrieved": 3, "allowed": 2, "denied": 1}
+    assert result["writes_performed"] == 0
+
+
+def test_acl_file_and_default_deny(tmp_path: Path, monkeypatch):
+    acl = tmp_path / "acl.json"
+    acl.write_text(json.dumps({"alice": ["7"]}), encoding="utf-8")
+    monkeypatch.setenv("POC_ACL_FILE", str(acl))
+    monkeypatch.delenv("POC_ALLOW_ALL_SIMILAR", raising=False)
+    runtime = api.RetrievalRuntime()
+    assert runtime.authorize("alice", "7")
+    assert not runtime.authorize("alice", "8")
+    assert not runtime.authorize("bob", "7")
+
+
+def test_http_health_setup_and_route_contracts(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(api, "ARTIFACTS", tmp_path)
+    with TestClient(api.app) as client:
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["status"] == "setup-required"
+        assert client.post("/suggest", json={"event": {}}).status_code == 503
+
+        runtime = make_ready(tmp_path, monkeypatch)
+        runtime.acl = {"alice": {"allowed-1", "allowed-2"}}
+        client.app.state.runtime = runtime
+        suggested = client.post("/suggest", json={"event": {"Event": {"info": "x"}}})
+        assert suggested.status_code == 200
+        assert suggested.json()["suggestions"][0]["tag"] == "tag:a"
+        assert client.post("/similar", json={"event": {}}).status_code == 401
+        similar = client.post(
+            "/similar", json={"event": {}}, headers={"X-Actor": "alice"}
+        )
+        assert similar.status_code == 200
+        assert similar.json()["read_only"] is True

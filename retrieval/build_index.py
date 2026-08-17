@@ -13,9 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from tagrec.families import label_family
 from tagrec.io import iter_jsonl, write_json_secure, write_jsonl_secure
@@ -118,6 +116,9 @@ def candidate_recall(
 
 
 def main() -> int:
+    import faiss
+    from sentence_transformers import SentenceTransformer
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data/processed")
     parser.add_argument("--artifacts", default="artifacts/retrieval")

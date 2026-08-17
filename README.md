@@ -17,10 +17,9 @@ You need:
 - Linux and Python 3.12;
 - [`uv`](https://docs.astral.sh/uv/);
 - a MISP API key with **read-only** access to events, tags, taxonomies, and galaxies;
-- enough private disk space for your MISP export and generated embeddings;
-- optionally, a CUDA GPU for faster index building and inference.
+- enough private disk space for your MISP export and generated embeddings.
 
-A small smoke export works on an ordinary machine. A large MISP may need 10+ GB of free disk and several hours to export and encode. Keep the repository and generated files on an access-controlled host.
+The default installation deliberately uses CPU-only PyTorch, avoiding several gigabytes of unexpected CUDA packages. Allow roughly 2 GB for the Python environment and downloaded encoder before accounting for your data. A small smoke export works on an ordinary machine. A large MISP may need 10+ GB of additional free disk and several hours to export and encode. Keep the repository and generated files on an access-controlled host.
 
 ## 2. Install
 
@@ -126,17 +125,13 @@ Open `data/processed/validation_report.md` and confirm it says `Status: PASS`. A
 
 The index builder downloads the pinned `BAAI/bge-base-en-v1.5` encoder, embeds train and validation events, selects retrieval depth and abstention threshold on validation, and writes safe JSON/JSONL/NPZ artifacts.
 
-CPU:
+Build the index on CPU:
 
 ```bash
 uv run python -m retrieval.build_index --device cpu
 ```
 
-CUDA:
-
-```bash
-uv run python -m retrieval.build_index --device cuda
-```
+Advanced users can substitute a CUDA-enabled PyTorch installation, but the documented PoC intentionally stays CPU-only and predictable.
 
 Expected artifacts:
 
@@ -160,7 +155,7 @@ MODEL_DEVICE=cpu uv run uvicorn app:app \
   --workers 1
 ```
 
-Use `MODEL_DEVICE=cuda` on a configured CUDA host. Open:
+Open:
 
 - API documentation: <http://127.0.0.1:8000/docs>
 - health check: <http://127.0.0.1:8000/health>
@@ -186,7 +181,7 @@ curl -s http://127.0.0.1:8000/suggest \
         ]
       }
     }
-  }' | python -m json.tool
+  }' | uv run python -m json.tool
 ```
 
 The response contains ranked tags and retrieval vote scores. If the event is unlike the indexed history, the service returns:
@@ -231,7 +226,7 @@ curl -s http://127.0.0.1:8000/similar \
         "info": "Credential-harvesting email campaign"
       }
     }
-  }' | python -m json.tool
+  }' | uv run python -m json.tool
 ```
 
 The response includes similarity, event ID, title, date, historical tags, and `group_size`. ACL filtering happens before duplicate/template collapse.
@@ -239,12 +234,22 @@ The response includes similarity, event ID, title, date, historical tags, and `g
 ## Troubleshooting
 
 - **`503 Retrieval index not built`** — complete step 7 or set `RETRIEVAL_ARTIFACTS` to the artifact directory.
-- **CUDA error** — use `--device cpu` while building and `MODEL_DEVICE=cpu` while serving.
+- **PyTorch or device error** — use the documented CPU commands unless you intentionally installed a compatible CUDA build.
 - **No tag suggestions** — the system may be abstaining, or the indexed training events may have too few eligible tags. Inspect `manifest.json` and `training_metrics.json`.
 - **No similar events** — check `X-Actor` and `POC_ACL_FILE`; access is denied by default.
 - **TLS certificate error** — install the correct CA certificate. Set `MISP_VERIFY_TLS=false` only for an isolated test where the risk is understood.
 - **Export interrupted** — rerun the same export command without `--overwrite`; it resumes completed pages.
 - **Out of memory** — keep export workers at one, use a smaller date range, and build the embedding index on a larger machine.
+
+## Run the test suite
+
+The tests use synthetic events and a local HTTP MISP double; they do not contact a real MISP or download a model.
+
+```bash
+uv run pytest -q
+```
+
+They cover export pagination and credential handling, taxonomy snapshotting, dataset construction and validation, index creation, retrieval voting and abstention, API contracts, ACL ordering, canonicalization, and repository hygiene. GitHub Actions runs the same suite on every push and pull request.
 
 ## Security boundaries
 
