@@ -1,0 +1,13 @@
+[project]
+name = "misp-suggest"
+version = "0.1.0"
+description = "Minimal read-only FastAPI wrapper for the MISP tag recommender"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.116,<1",
+  "faiss-cpu>=1.13,<2",
+  "scikit-learn>=1.9,<2",
+  "sentence-transformers>=5.2,<6",
+  "tldextract>=5.3,<6",
+  "uvicorn>=0.35,<1",
+]
