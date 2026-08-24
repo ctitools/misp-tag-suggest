@@ -246,13 +246,15 @@ def test_http_error_facts_hash_message_instead_of_logging_it():
     result = HTTPResult(
         400,
         b'{"error":{"type":"invalid_request_error","code":"bad_schema","param":"text.format","message":"private echoed material"}}',
-        {},
+        {"x-ratelimit-remaining-tokens": "0", "retry-after": "12"},
     )
     facts = safe_http_error_facts(result)
     assert facts["error_type"] == "invalid_request_error"
     assert facts["error_code"] == "bad_schema"
     assert facts["error_param"] == "text.format"
     assert "private echoed material" not in json.dumps(facts)
+    assert facts["x_ratelimit_remaining_tokens"] == "0"
+    assert facts["retry_after"] == "12"
     assert len(facts["message_sha256"]) == 64
 
 

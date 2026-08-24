@@ -449,6 +449,17 @@ def safe_http_error_facts(result: HTTPResult) -> dict[str, Any]:
         "http_status": result.status_code,
         "body_sha256": sha256_bytes(result.body),
     }
+    for header in (
+        "x-ratelimit-limit-tokens",
+        "x-ratelimit-remaining-tokens",
+        "x-ratelimit-reset-tokens",
+        "x-ratelimit-limit-requests",
+        "x-ratelimit-remaining-requests",
+        "x-ratelimit-reset-requests",
+        "retry-after",
+    ):
+        if header in result.headers:
+            facts[header.replace("-", "_")] = result.headers[header]
     try:
         error = json.loads(result.body).get("error", {})
     except (json.JSONDecodeError, AttributeError):

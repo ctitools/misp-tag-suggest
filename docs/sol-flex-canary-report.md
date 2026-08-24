@@ -93,3 +93,13 @@ request eight was retried. After explicit operator approval, the runner added up
 five bounded rate-limit retries with exponential backoff from 15 seconds, honors
 provider reset headers, and caps any wait at 300 seconds. Filtering and policy signals
 remain non-retryable.
+
+The continuation again received `rate_limit_exceeded` for the same request after all
+five waits (15, 30, 60, 120, and 240 seconds). A separately authorized protected
+capture confirmed that the 429 response supplied none of
+`x-ratelimit-remaining-tokens`, `x-ratelimit-remaining-requests`, or `retry-after`.
+Its complete message was “We're currently processing too many requests — please try
+again later.” The preceding successful response had reported 1,998,771 of 2,000,000
+tokens and 4,999 of 5,000 requests remaining. This points to temporary provider/model
+processing capacity rather than the documented project token or request counters.
+The runner now records those safe rate-limit headers when providers return them.
