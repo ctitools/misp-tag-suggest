@@ -256,6 +256,48 @@ def test_http_error_facts_hash_message_instead_of_logging_it():
     assert len(facts["message_sha256"]) == 64
 
 
+def test_rate_limit_uses_bounded_exponential_backoff(tmp_path: Path):
+    value = seed()
+    rate_limited = HTTPResult(
+        429,
+        b'{"error":{"type":"invalid_request_error","code":"rate_limit_exceeded","message":"Rate limit reached"}}',
+        {"retry-after": "20"},
+    )
+    results = [rate_limited, rate_limited, response_for(value)]
+    delays = []
+
+    def transport(body, headers, timeout):
+        return results.pop(0)
+
+    report = run(
+        [value], schema=schema(), stage="canary", budget_usd=2, transport=transport,
+        sleep=delays.append, **paths(tmp_path)
+    )
+    assert report["accepted"] == 1
+    assert report["http_attempts"] == 3
+    assert delays == [20.0, 30.0]
+
+
+def test_rate_limit_retry_count_is_bounded(tmp_path: Path):
+    calls = 0
+
+    def transport(body, headers, timeout):
+        nonlocal calls
+        calls += 1
+        return HTTPResult(
+            429,
+            b'{"error":{"code":"rate_limit_exceeded","message":"Rate limit reached"}}',
+            {},
+        )
+
+    with pytest.raises(EmergencyHalt, match="bounded rate_limit_exceeded"):
+        run(
+            [seed()], schema=schema(), stage="canary", budget_usd=2,
+            transport=transport, sleep=lambda _: None, **paths(tmp_path)
+        )
+    assert calls == 6  # initial request plus five retries
+
+
 def test_policy_http_error_is_never_retried(tmp_path: Path):
     calls = 0
 

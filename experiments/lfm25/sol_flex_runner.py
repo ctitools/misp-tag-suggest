@@ -31,7 +31,10 @@ KEY_PATH = Path.home() / ".config/misp-suggest/openai_api_key"
 CACHE_KEY = "misp-suggest-fictional-bundles-v1"
 SAFETY_IDENTIFIER = "misp-suggest-research"
 TIMEOUT_SECONDS = 900.0
-MAX_RETRIES = 2
+MAX_FLEX_RETRIES = 2
+MAX_RATE_LIMIT_RETRIES = 5
+RATE_LIMIT_BACKOFF_BASE_SECONDS = 15.0
+RATE_LIMIT_BACKOFF_MAX_SECONDS = 300.0
 HARD_BUDGET_USD = 200.0
 # Promotional Flex prices per million tokens, documented 2026-08-24.
 INPUT_USD_PER_M = 2.0
@@ -73,7 +76,12 @@ class EmergencyHalt(RuntimeError):
 
 
 class OrdinaryFlexRetry(RuntimeError):
-    """A retryable 408 or exact Flex resource-unavailable response."""
+    """A bounded retry signal with a category-specific backoff policy."""
+
+    def __init__(self, message: str, *, category: str, documented_uncharged: bool):
+        super().__init__(message)
+        self.category = category
+        self.documented_uncharged = documented_uncharged
 
 
 @dataclass(frozen=True)
@@ -462,10 +470,56 @@ def classify_http_error(result: HTTPResult) -> None:
     if _POLICY_ERROR_RE.search(text):
         raise EmergencyHalt(f"policy-related API error (HTTP {result.status_code})")
     if result.status_code == 408:
-        raise OrdinaryFlexRetry("Flex HTTP 408 Request Timeout")
+        raise OrdinaryFlexRetry(
+            "Flex HTTP 408 Request Timeout",
+            category="request_timeout",
+            documented_uncharged=False,
+        )
     if result.status_code == 429 and "resource unavailable" in text.casefold():
-        raise OrdinaryFlexRetry("Flex HTTP 429 Resource Unavailable")
+        raise OrdinaryFlexRetry(
+            "Flex HTTP 429 Resource Unavailable",
+            category="resource_unavailable",
+            documented_uncharged=True,
+        )
+    try:
+        code = json.loads(text).get("error", {}).get("code")
+    except (json.JSONDecodeError, AttributeError):
+        code = None
+    if result.status_code == 429 and code == "rate_limit_exceeded":
+        raise OrdinaryFlexRetry(
+            "OpenAI HTTP 429 rate_limit_exceeded",
+            category="rate_limit_exceeded",
+            documented_uncharged=False,
+        )
     raise EmergencyHalt(f"unexpected OpenAI HTTP status {result.status_code}")
+
+
+def _duration_seconds(value: str) -> float | None:
+    value = value.strip().casefold()
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    matches = re.findall(r"([0-9]+(?:\.[0-9]+)?)(ms|s|m|h)", value)
+    if not matches or "".join(number + unit for number, unit in matches) != value:
+        return None
+    factors = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
+    return sum(float(number) * factors[unit] for number, unit in matches)
+
+
+def retry_delay(result: HTTPResult, retry: OrdinaryFlexRetry, retry_index: int) -> float:
+    if retry.category != "rate_limit_exceeded":
+        return float(2**retry_index)
+    delay = min(
+        RATE_LIMIT_BACKOFF_BASE_SECONDS * (2**retry_index),
+        RATE_LIMIT_BACKOFF_MAX_SECONDS,
+    )
+    for header in ("retry-after", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        if header in result.headers:
+            parsed = _duration_seconds(result.headers[header])
+            if parsed is not None:
+                delay = max(delay, parsed)
+    return min(delay, RATE_LIMIT_BACKOFF_MAX_SECONDS)
 
 
 def extract_bundle(response: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int], float]:
@@ -577,7 +631,7 @@ def run(
             }
             response: dict[str, Any] | None = None
             reservation_id = ""
-            for retry in range(MAX_RETRIES + 1):
+            for retry in range(MAX_RATE_LIMIT_RETRIES + 1):
                 reservation = pessimistic_reservation(body, max_output_tokens)
                 committed = ledger.budget_committed()
                 if committed + reservation > budget_usd + 1e-12:
@@ -619,21 +673,34 @@ def run(
                     )
                     try:
                         classify_http_error(result)
-                    except OrdinaryFlexRetry:
+                    except OrdinaryFlexRetry as retry_signal:
+                        # Both forms of 429 are rejected before inference and carry no
+                        # usage object. A 408 is ambiguous, so its reservation remains.
+                        uncharged = result.status_code == 429
+                        delay = retry_delay(result, retry_signal, retry)
                         ledger.append(
                             {
-                                "kind": "uncharged" if result.status_code == 429 else "retry_error",
+                                "kind": "uncharged" if uncharged else "retry_error",
                                 "stage": stage,
                                 "bundle_id": bundle_id,
                                 "reservation_id": reservation_id,
                                 "http_status": result.status_code,
-                                "documented_uncharged": result.status_code == 429,
+                                "retry_category": retry_signal.category,
+                                "documented_uncharged": retry_signal.documented_uncharged,
+                                "backoff_seconds": delay,
                                 "unix_time": time.time(),
                             }
                         )
-                        if retry == MAX_RETRIES:
-                            raise EmergencyHalt("bounded Flex retries exhausted")
-                        sleep(float(2**retry))
+                        retry_limit = (
+                            MAX_RATE_LIMIT_RETRIES
+                            if retry_signal.category == "rate_limit_exceeded"
+                            else MAX_FLEX_RETRIES
+                        )
+                        if retry >= retry_limit:
+                            raise EmergencyHalt(
+                                f"bounded {retry_signal.category} retries exhausted"
+                            )
+                        sleep(delay)
                         continue
                 try:
                     response = json.loads(result.body)

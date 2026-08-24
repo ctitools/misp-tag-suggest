@@ -15,7 +15,7 @@ before any live request. The runner:
   caching, `store=false`, and sequential requests;
 - performs a structural privacy gate before opening HTTP;
 - pessimistically reserves spend before each attempt;
-- retries only HTTP 408 and an exact HTTP 429 Resource Unavailable response;
+- initially retried only HTTP 408 and exact HTTP 429 Resource Unavailable responses;
 - persists a global brake on refusal, filtering, policy errors, malformed output,
   unexpected service tier/model, privacy failures, or budget failures.
 
@@ -84,5 +84,12 @@ validators. Usage and measured cost were:
 - cost: **USD 0.020698**.
 
 The original global brake and its ledger remain intact as evidence. This diagnostic
-did not silently continue the original run, and the 20-bundle canary has not yet been
-resumed.
+did not silently continue the original run.
+
+A subsequently authorized fresh canary admitted seven valid bundles before the
+project returned HTTP 429 with exact code `rate_limit_exceeded`. It was not the
+previously allowed `Resource Unavailable` subtype, so that run also stopped before
+request eight was retried. After explicit operator approval, the runner added up to
+five bounded rate-limit retries with exponential backoff from 15 seconds, honors
+provider reset headers, and caps any wait at 300 seconds. Filtering and policy signals
+remain non-retryable.
