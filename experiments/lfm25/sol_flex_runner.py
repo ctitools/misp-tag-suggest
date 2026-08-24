@@ -28,7 +28,7 @@ API_URL = "https://api.openai.com/v1/responses"
 MODEL = "gpt-5.6-sol"
 SERVICE_TIER = "flex"
 KEY_PATH = Path.home() / ".config/misp-suggest/openai_api_key"
-CACHE_KEY = "misp-suggest-fictional-bundles-v2-style-aligned"
+CACHE_KEY = "misp-suggest-fictional-bundles-v3-title-aligned"
 SAFETY_IDENTIFIER = "misp-suggest-research"
 TIMEOUT_SECONDS = 900.0
 MAX_FLEX_RETRIES = 2
@@ -180,7 +180,7 @@ VARIANTS
 6. insufficient_evidence: plausible but too sparse to apply any candidate; expected_tags and evidence_paths empty.
 
 EVENT CONSTRUCTION
-All six events must be materially different, not a template with substitutions. Match the coarse style profile of analyst-authored MISP training events: event.info is a short title-like summary of 5 to 15 words and at least 20 characters, not a narrative paragraph. Put evidence primarily in attributes and concise comments. Use 5 to 12 total attributes for positive/confuser scenarios and 2 to 8 for negative/insufficient scenarios; attributes nested in objects count toward that total. Use zero or one compact object. The private source profile contained 16,758 analyst training events and only these aggregate ranges are supplied; no source text is present. MISP-style category/type names may remain English while event.info and comments use the requested language. Positive evidence must appear in generated fields. Negatives must not accidentally mention candidate-defining behavior. Explicit positives may use an ordinary public malware-family name when natural, but implicit and partial positives must not spell out the target tag string. Do not place taxonomy tags in event text.
+All six events must be materially different, not a template with substitutions. Match the coarse style profile of analyst-authored MISP training events: event.info is a compact source-style title of 4 to 12 words, 20 to 80 characters, not a narrative sentence. For English, vary natural headline capitalization and sentence capitalization instead of making every title a polished declarative sentence; do not add case IDs, organizations, dates, or real names. Put evidence primarily in attributes and concise comments. Use 5 to 12 total attributes for positive/confuser scenarios and 2 to 8 for negative/insufficient scenarios; attributes nested in objects count toward that total. Use zero or one compact object. The private source profile contained 16,758 analyst training events and only these aggregate ranges are supplied; no source text is present. MISP-style category/type names may remain English while event.info and comments use the requested language. Positive evidence must appear in generated fields. Negatives must not accidentally mention candidate-defining behavior. Explicit positives may use an ordinary public malware-family name when natural, but implicit and partial positives must not spell out the target tag string. Do not place taxonomy tags in event text.
 
 EVIDENCE PATHS
 Paths start with event and must resolve to a nonempty scalar in that scenario. Allowed forms are event.info; event.attributes.N.category; event.attributes.N.type; event.attributes.N.value; event.attributes.N.comment; event.objects.N.name; event.objects.N.attributes.M.type; and event.objects.N.attributes.M.value. Use actual zero-based indexes. Negative and insufficient variants have no evidence paths.
