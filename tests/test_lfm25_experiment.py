@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+from experiments.lfm25.admit_synthetic import leakage_errors
+from experiments.lfm25.audit_synthetic_alignment import generated_canonical
 from experiments.lfm25.build_real_pairs import partial_text
 from experiments.lfm25.metrics import (
     candidate_recall_metrics,
@@ -127,6 +129,24 @@ def test_synthetic_validator_allows_shell_observation_but_rejects_command_syntax
     )
     errors = validate_bundle(operational)
     assert any("command-like content" in error for error in errors)
+
+
+def test_synthetic_admission_leakage_check_ignores_generic_other_only():
+    generic = _valid_bundle()
+    generic["target_tag"] = 'cssa:origin="other"'
+    generic["scenarios"][1]["event"]["info"] = "Other provenance remains uncategorized."
+    assert leakage_errors(generic) == []
+
+    leaked = _valid_bundle()
+    leaked["scenarios"][1]["event"]["info"] = "Exact phishing target appears here."
+    assert leakage_errors(leaked) == ["exact target value leaked in implicit_positive"]
+
+
+def test_generated_event_uses_production_canonical_markers():
+    event = _valid_bundle()["scenarios"][0]["event"]
+    text = generated_canonical(event)
+    assert text.startswith("[INFO] ")
+    assert "[ATTR] Network activity/domain:" in text
 
 
 def test_synthetic_bundle_validator_rejects_label_contract_mutation():
