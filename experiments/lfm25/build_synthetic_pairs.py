@@ -59,8 +59,8 @@ def main() -> int:
             pairs.append(
                 {
                     "pair_id": pair_id(bundle_id, variant, "event-tag"),
-                    "text_a": generated_canonical(scenario["event"]),
-                    "text_b": document,
+                    "query": generated_canonical(scenario["event"]),
+                    "positive": document,
                     "pair_type": "synthetic-event-tag",
                     "target_tag": tag,
                     "target_family": seed["target_family"],
@@ -75,8 +75,8 @@ def main() -> int:
             pairs.append(
                 {
                     "pair_id": pair_id(bundle_id, variant, "preservation"),
-                    "text_a": generated_canonical(scenarios[variant]["event"]),
-                    "text_b": explicit_text,
+                    "query": generated_canonical(scenarios[variant]["event"]),
+                    "positive": explicit_text,
                     "pair_type": "synthetic-partial-full",
                     "target_tag": bundle["target_tag"],
                     "target_family": seed["target_family"],
