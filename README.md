@@ -251,6 +251,24 @@ uv run pytest -q
 
 They cover export pagination and credential handling, taxonomy snapshotting, dataset construction and validation, index creation, retrieval voting and abstention, API contracts, ACL ordering, canonicalization, and repository hygiene. GitHub Actions runs the same suite on every push and pull request.
 
+## Experimental LFM2.5 research
+
+The shipped demo remains the pinned BGE retriever. A validation-only experiment with
+`LiquidAI/LFM2.5-Embedding-350M` found that the frozen model was worse, while one
+epoch of capped real-only training improved analyst native-label P@3 over BGE by
+`0.0221` with a positive paired confidence interval. That is promising but below the
+predeclared adoption target, so LFM is not enabled in the API.
+
+The reproducible benchmark, pair builder, training script and privacy-safe synthetic
+schema are under `experiments/lfm25/`. Training dependencies are installed with:
+
+```bash
+uv sync --group training
+```
+
+See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for results, compute
+costs, remote-code audit, licensing caveat and the no-test-read decision.
+
 ## Security boundaries
 
 - MISP is contacted only by `scripts.export_events` and `scripts.snapshot_taxonomy`.

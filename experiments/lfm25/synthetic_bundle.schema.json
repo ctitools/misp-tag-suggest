@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ctitools/misp-suggest/experiments/lfm25/synthetic_bundle.schema.json",
+  "title": "Privacy-safe fictional MISP scenario bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "language",
+    "difficulty",
+    "target_tag",
+    "candidate_tags",
+    "scenarios"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "bundle_id": {"type": "string", "pattern": "^syn-[a-z0-9-]{8,64}$"},
+    "language": {"enum": ["en", "de", "fr", "es"]},
+    "difficulty": {"enum": ["ordinary", "hard", "boundary"]},
+    "target_tag": {"type": "string", "minLength": 1, "maxLength": 512},
+    "candidate_tags": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {"$ref": "#/$defs/scenario"}
+    }
+  },
+  "$defs": {
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario_id",
+        "variant",
+        "expected_relevance",
+        "expected_tags",
+        "evidence_paths",
+        "event"
+      ],
+      "properties": {
+        "scenario_id": {"type": "string", "pattern": "^syn-[a-z0-9-]{8,80}$"},
+        "variant": {
+          "enum": [
+            "explicit_positive",
+            "implicit_positive",
+            "partial_positive",
+            "same_family_confuser",
+            "unrelated_negative",
+            "insufficient_evidence"
+          ]
+        },
+        "expected_relevance": {"type": "integer", "minimum": 0, "maximum": 2},
+        "expected_tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 3,
+          "items": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "evidence_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "pattern": "^event\\.(info|attributes\\.[0-9]+\\.(category|type|value|comment)|objects\\.[0-9]+\\.(name|attributes\\.[0-9]+\\.(type|value)))$"
+          }
+        },
+        "event": {"$ref": "#/$defs/event"}
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["info", "attributes", "objects"],
+      "properties": {
+        "info": {"type": "string", "minLength": 20, "maxLength": 800},
+        "attributes": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {"$ref": "#/$defs/attribute"}
+        },
+        "objects": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {"$ref": "#/$defs/object"}
+        }
+      }
+    },
+    "attribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "type", "value"],
+      "properties": {
+        "category": {"type": "string", "minLength": 1, "maxLength": 100},
+        "type": {
+          "enum": [
+            "domain",
+            "hostname",
+            "url",
+            "ip-src",
+            "ip-dst",
+            "email-src",
+            "email-dst",
+            "sha256",
+            "filename",
+            "text"
+          ]
+        },
+        "value": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "comment": {"type": "string", "maxLength": 500}
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "attributes"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 100},
+        "attributes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type", "value"],
+            "properties": {
+              "type": {"type": "string", "minLength": 1, "maxLength": 100},
+              "value": {"type": "string", "minLength": 1, "maxLength": 1000}
+            }
+          }
+        }
+      }
+    }
+  }
+}

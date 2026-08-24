@@ -8,6 +8,7 @@ dependencies = [
   "fastapi>=0.116,<1",
   "faiss-cpu>=1.13,<2",
   "ijson>=3.4,<4",
+  "jsonschema>=4.25,<5",
   "numpy>=2,<3",
   "pymisp>=2.5,<3",
   "python-dotenv>=1.2,<2",
@@ -15,6 +16,7 @@ dependencies = [
   "sentence-transformers>=5.2,<6",
   "tldextract>=5.3,<6",
   "torch>=2.2,<3",
+  "transformers>=4.57,<4.58",
   "uvicorn>=0.35,<1",
 ]
 
@@ -22,6 +24,10 @@ dependencies = [
 dev = [
   "httpx>=0.28,<1",
   "pytest>=9,<10",
+]
+training = [
+  "accelerate>=1.12,<2",
+  "datasets>=4.5,<5",
 ]
 
 [tool.uv.sources]
