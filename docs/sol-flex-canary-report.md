@@ -57,9 +57,32 @@ The local ephemeral key file was removed after the halt. The operator must also
 revoke the credential in the OpenAI project dashboard; local deletion cannot revoke a
 server-side key.
 
-## Required recovery
+## Follow-up diagnosis
 
-A future run requires a fresh credential and explicit authorization after the HTTP
-400 is diagnosed from provider-side request logs. It must be treated as a new canary,
-not a continuation. If provider logs indicate any policy or filtering cause, the
-experiment must remain stopped and no prompt mutation is permitted.
+After explicit operator authorization and credential rotation, the exact frozen
+request was replayed once with its complete error body retained privately. OpenAI
+returned:
+
+```text
+invalid_json_schema at text.format.schema:
+In context=('properties', 'schema_version'), schema must have a 'type' key.
+```
+
+The local schema used `const: 1` without a redundant explicit `type`. That is valid
+JSON Schema, but OpenAI's strict Structured Outputs validator requires `type` beside
+`const` and `enum`. The adapter now infers and inserts those explicit types without
+changing the generation instructions or label contracts.
+
+One corrected diagnostic request then completed successfully on exact
+`gpt-5.6-sol` with effective `service_tier="flex"`, `moderation=null`, and a bundle
+that passed the full local schema, privacy, evidence-path, indicator, and frozen-label
+validators. Usage and measured cost were:
+
+- input: 2,889 tokens;
+- cache write: 2,400 tokens;
+- output: 1,372 tokens, including 234 reasoning tokens;
+- cost: **USD 0.020698**.
+
+The original global brake and its ledger remain intact as evidence. This diagnostic
+did not silently continue the original run, and the 20-bundle canary has not yet been
+resumed.

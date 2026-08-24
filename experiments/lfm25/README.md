@@ -103,7 +103,8 @@ uv run python -m experiments.lfm25.build_synthetic_seeds \
 Read [`SYNTHETIC_DATA.md`](SYNTHETIC_DATA.md) before generation. The seed output
 contains taxonomy definitions and aggregate frequency buckets only. The live runner
 is `sol_flex_runner.py`; it must never be invoked while its global `HALTED.json`
-brake exists. The first canary halted before generation, as recorded in
+brake exists. The first canary halted before generation; its strict-schema issue was
+subsequently diagnosed and corrected, but the full canary has not resumed. See
 [`../../docs/sol-flex-canary-report.md`](../../docs/sol-flex-canary-report.md).
 
 ## 8. Validate generated bundles

@@ -130,6 +130,9 @@ def test_request_is_exact_sol_flex_explicit_cache_and_strict_schema():
     assert block["prompt_cache_breakpoint"] == {"mode": "explicit"}
     assert len(block["text"].encode()) > 8_000
     assert request["text"]["format"]["strict"] is True
+    response_schema = request["text"]["format"]["schema"]
+    assert response_schema["properties"]["schema_version"]["type"] == "integer"
+    assert response_schema["properties"]["language"]["type"] == "string"
     assert len(body) > len(block["text"])
     assert len(prompt_hash) == len(schema_hash) == 64
 

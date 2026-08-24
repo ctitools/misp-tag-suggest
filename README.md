@@ -268,7 +268,8 @@ uv sync --group training
 
 See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for retrieval results
 and [`docs/sol-flex-canary-report.md`](docs/sol-flex-canary-report.md) for the later
-fail-closed HTTP 400 canary halt. No synthetic output was admitted or trained.
+fail-closed HTTP 400 canary halt and successful schema-compatibility diagnosis. No
+synthetic output has yet been admitted or trained.
 
 ## Security boundaries
 

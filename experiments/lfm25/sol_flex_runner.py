@@ -111,6 +111,23 @@ def strict_response_schema(schema: dict[str, Any]) -> dict[str, Any]:
             # constraints. The full local schema is applied after generation.
             for unsupported in ("minLength", "maxLength", "uniqueItems"):
                 node.pop(unsupported, None)
+            # Its validator also requires an explicit type alongside const/enum.
+            if "type" not in node:
+                examples = [node["const"]] if "const" in node else list(node.get("enum", []))
+                kinds = {
+                    "boolean" if isinstance(value, bool)
+                    else "integer" if isinstance(value, int)
+                    else "number" if isinstance(value, float)
+                    else "string" if isinstance(value, str)
+                    else "null" if value is None
+                    else ""
+                    for value in examples
+                }
+                kinds.discard("")
+                if len(kinds) == 1:
+                    node["type"] = next(iter(kinds))
+                elif kinds:
+                    node["type"] = sorted(kinds)
             properties = node.get("properties")
             if isinstance(properties, dict):
                 node["required"] = list(properties)
