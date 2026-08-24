@@ -114,6 +114,21 @@ def test_synthetic_bundle_validator_accepts_only_reserved_indicators():
     assert any("not under .example" in error for error in errors)
 
 
+def test_synthetic_validator_allows_shell_observation_but_rejects_command_syntax():
+    observed = _valid_bundle()
+    observed["scenarios"][0]["event"]["info"] = (
+        "Defensive endpoint telemetry showed cmd.exe launching an unexpected child process."
+    )
+    assert validate_bundle(observed) == []
+
+    operational = copy.deepcopy(observed)
+    operational["scenarios"][0]["event"]["info"] = (
+        "The report contained an executable command: cmd.exe /c whoami."
+    )
+    errors = validate_bundle(operational)
+    assert any("command-like content" in error for error in errors)
+
+
 def test_synthetic_bundle_validator_rejects_label_contract_mutation():
     bundle = _valid_bundle()
     bundle["scenarios"][0]["expected_tags"] = [bundle["candidate_tags"][1]]

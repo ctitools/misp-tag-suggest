@@ -36,7 +36,9 @@ _PUBLIC_DOMAIN_RE = re.compile(
 )
 _OPERATIONAL_RE = re.compile(
     r"```|-----BEGIN [A-Z ]+PRIVATE KEY-----|\b(?:password|passwd|api[_ -]?key)\s*[:=]"
-    r"|\b(?:powershell|cmd\.exe|/bin/(?:ba)?sh)\s+(?:-[A-Za-z]+\s+)*[-/A-Za-z0-9]"
+    r"|\bpowershell(?:\.exe)?\s+-[A-Za-z]"
+    r"|\bcmd\.exe\s+/(?:c|k)\b"
+    r"|/bin/(?:ba)?sh\s+-c\b"
     r"|\b(?:curl|wget)\s+https?://",
     re.IGNORECASE,
 )
