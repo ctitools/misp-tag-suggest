@@ -25,6 +25,21 @@ _UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+_EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}\b", re.IGNORECASE)
+_IPV4_RE = re.compile(r"(?<![0-9.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9.])")
+_HEX64_RE = re.compile(r"\b[0-9a-f]{64}\b", re.IGNORECASE)
+_CVE_RE = re.compile(r"\bCVE-[0-9]{4}-[0-9]{4,}\b", re.IGNORECASE)
+_PUBLIC_DOMAIN_RE = re.compile(
+    r"\b(?:[a-z0-9-]+\.)+(?:com|net|org|ru|cn|io|co|xyz|top|info|biz|de|fr|es|uk)\b",
+    re.IGNORECASE,
+)
+_OPERATIONAL_RE = re.compile(
+    r"```|-----BEGIN [A-Z ]+PRIVATE KEY-----|\b(?:password|passwd|api[_ -]?key)\s*[:=]"
+    r"|\b(?:powershell|cmd\.exe|/bin/(?:ba)?sh)\s+(?:-[A-Za-z]+\s+)*[-/A-Za-z0-9]"
+    r"|\b(?:curl|wget)\s+https?://",
+    re.IGNORECASE,
+)
 
 
 def _is_example_domain(value: str) -> bool:
@@ -86,6 +101,73 @@ def _indicator_error(indicator_type: str, value: str) -> str | None:
             else "SHA-256 must be a 64-hex fictional placeholder beginning with 32 zeroes"
         )
     return None
+
+
+def _event_strings(event: dict[str, Any]) -> list[tuple[str, str]]:
+    values = [("info", str(event.get("info", "")))]
+    for index, attribute in enumerate(event.get("attributes", []) or []):
+        indicator_type = str(attribute.get("type", ""))
+        if indicator_type not in {"domain", "hostname", "url", "ip-src", "ip-dst", "email-src", "email-dst", "sha256", "filename"}:
+            values.append((f"attributes.{index}.value", str(attribute.get("value", ""))))
+        if "comment" in attribute:
+            values.append((f"attributes.{index}.comment", str(attribute.get("comment", ""))))
+    for object_index, item in enumerate(event.get("objects", []) or []):
+        for attr_index, attribute in enumerate(item.get("attributes", []) or []):
+            values.append(
+                (
+                    f"objects.{object_index}.attributes.{attr_index}.value",
+                    str(attribute.get("value", "")),
+                )
+            )
+    return values
+
+
+def _free_text_errors(value: str) -> list[str]:
+    errors: list[str] = []
+    for match in _URL_RE.findall(value):
+        parsed = urlparse(match.rstrip(".,;:!?)"))
+        if not parsed.hostname or not _is_example_domain(parsed.hostname):
+            errors.append("free text contains a non-.example URL")
+    for match in _EMAIL_RE.findall(value):
+        if not _is_example_domain(match.rpartition("@")[2]):
+            errors.append("free text contains a non-.example email")
+    for match in _IPV4_RE.findall(value):
+        if not _is_documentation_ip(match):
+            errors.append("free text contains a non-documentation IPv4 address")
+    for match in _HEX64_RE.findall(value):
+        if not match.lower().startswith("0" * 32):
+            errors.append("free text contains a non-placeholder SHA-256")
+    for match in _PUBLIC_DOMAIN_RE.findall(value):
+        if not _is_example_domain(match):
+            errors.append("free text contains a public-looking domain")
+    if _CVE_RE.search(value):
+        errors.append("generated event must not cite a real CVE identifier")
+    if _OPERATIONAL_RE.search(value):
+        errors.append("generated event contains credential, code, or command-like content")
+    return sorted(set(errors))
+
+
+def validate_seed_contract(bundle: dict[str, Any], seed: dict[str, Any]) -> list[str]:
+    """Ensure model output did not mutate any locally frozen label decision."""
+    errors: list[str] = []
+    for key in ("bundle_id", "language", "difficulty", "target_tag", "candidate_tags"):
+        if bundle.get(key) != seed.get(key):
+            errors.append(f"seed contract changed: {key}")
+    contracts = seed.get("fixed_label_contract", {}) or {}
+    by_variant = {
+        str(scenario.get("variant", "")): scenario
+        for scenario in bundle.get("scenarios", []) or []
+    }
+    for variant, contract in contracts.items():
+        scenario = by_variant.get(str(variant))
+        if scenario is None:
+            errors.append(f"seed contract missing variant: {variant}")
+            continue
+        if scenario.get("expected_tags") != contract.get("expected_tags"):
+            errors.append(f"seed contract changed expected_tags: {variant}")
+        if scenario.get("expected_relevance") != contract.get("relevance"):
+            errors.append(f"seed contract changed relevance: {variant}")
+    return errors
 
 
 def validate_bundle(
@@ -157,12 +239,24 @@ def validate_bundle(
         normalized_events.add(event_hash)
         if _UUID_RE.search(normalized):
             errors.append(f"{prefix}: UUID-like value is forbidden")
+        for location, value in _event_strings(event):
+            for problem in _free_text_errors(value):
+                errors.append(f"{prefix}.event.{location}: {problem}")
         for attr_index, attribute in enumerate(event.get("attributes", []) or []):
             indicator_type = str(attribute.get("type", ""))
             value = str(attribute.get("value", ""))
             problem = _indicator_error(indicator_type, value)
             if problem:
                 errors.append(f"{prefix}.event.attributes[{attr_index}]: {problem}")
+        for object_index, item in enumerate(event.get("objects", []) or []):
+            for attr_index, attribute in enumerate(item.get("attributes", []) or []):
+                indicator_type = str(attribute.get("type", ""))
+                value = str(attribute.get("value", ""))
+                problem = _indicator_error(indicator_type, value)
+                if problem:
+                    errors.append(
+                        f"{prefix}.event.objects[{object_index}].attributes[{attr_index}]: {problem}"
+                    )
     return errors
 
 

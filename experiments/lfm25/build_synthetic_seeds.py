@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -18,6 +19,18 @@ from tagrec.io import iter_jsonl, write_json_secure, write_jsonl_secure
 FAMILIES = ("incident-class", "attack-technique", "malware-family", "context")
 LANGUAGES = ("en", "en", "en", "de", "fr", "es")
 DIFFICULTIES = ("ordinary", "hard", "boundary")
+_UUID_RE = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
+_URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+
+
+def sanitize_public_document(value: str) -> str:
+    """Remove public reference locators that must not look like event indicators."""
+    value = _UUID_RE.sub("[public-reference-removed]", value)
+    value = _URL_RE.sub("[public-url-removed]", value)
+    return " ".join(value.split())
 
 
 def frequency_bucket(count: int) -> str:
@@ -122,7 +135,7 @@ def main() -> int:
             f"{args.seed}\x1f{target_tag}".encode()
         ).hexdigest()[:16]
         documents = {
-            tag: str(by_tag[tag]["document"])
+            tag: sanitize_public_document(str(by_tag[tag]["document"]))
             for tag in candidate_tags
         }
         output_rows.append(
