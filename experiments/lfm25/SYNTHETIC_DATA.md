@@ -1,6 +1,6 @@
 # Synthetic scenario specification
 
-**Status:** schema and seed preparation only; no API generation is performed by these files.
+**Status:** schema, seed preparation, and a fail-closed Flex runner are implemented. The first live canary halted on HTTP 400 before generation; see `docs/sol-flex-canary-report.md`.
 
 ## Purpose
 

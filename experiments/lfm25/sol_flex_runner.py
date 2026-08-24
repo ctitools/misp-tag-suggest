@@ -418,6 +418,28 @@ def _error_text(result: HTTPResult) -> str:
     return result.body.decode("utf-8", errors="replace")[:20_000]
 
 
+def safe_http_error_facts(result: HTTPResult) -> dict[str, Any]:
+    """Retain diagnostic categories without persisting a possibly echoed prompt."""
+    facts: dict[str, Any] = {
+        "http_status": result.status_code,
+        "body_sha256": sha256_bytes(result.body),
+    }
+    try:
+        error = json.loads(result.body).get("error", {})
+    except (json.JSONDecodeError, AttributeError):
+        return facts
+    if not isinstance(error, dict):
+        return facts
+    for key in ("type", "code", "param"):
+        value = error.get(key)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            facts[f"error_{key}"] = value
+    message = error.get("message")
+    if isinstance(message, str):
+        facts["message_sha256"] = sha256_bytes(message.encode("utf-8"))
+    return facts
+
+
 def classify_http_error(result: HTTPResult) -> None:
     text = _error_text(result)
     if _POLICY_ERROR_RE.search(text):
@@ -568,6 +590,16 @@ def run(
                 result = transport(body, headers, TIMEOUT_SECONDS)
                 sent += 1
                 if result.status_code != 200:
+                    ledger.append(
+                        {
+                            "kind": "http_error",
+                            "stage": stage,
+                            "bundle_id": bundle_id,
+                            "reservation_id": reservation_id,
+                            **safe_http_error_facts(result),
+                            "unix_time": time.time(),
+                        }
+                    )
                     try:
                         classify_http_error(result)
                     except OrdinaryFlexRetry:

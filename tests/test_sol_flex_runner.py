@@ -13,6 +13,7 @@ from experiments.lfm25.sol_flex_runner import (
     SERVICE_TIER,
     make_request,
     run,
+    safe_http_error_facts,
     strict_response_schema,
 )
 
@@ -236,6 +237,20 @@ def test_only_documented_flex_errors_retry(tmp_path: Path):
     )
     assert report["http_attempts"] == 2
     assert report["accepted"] == 1
+
+
+def test_http_error_facts_hash_message_instead_of_logging_it():
+    result = HTTPResult(
+        400,
+        b'{"error":{"type":"invalid_request_error","code":"bad_schema","param":"text.format","message":"private echoed material"}}',
+        {},
+    )
+    facts = safe_http_error_facts(result)
+    assert facts["error_type"] == "invalid_request_error"
+    assert facts["error_code"] == "bad_schema"
+    assert facts["error_param"] == "text.format"
+    assert "private echoed material" not in json.dumps(facts)
+    assert len(facts["message_sha256"]) == 64
 
 
 def test_policy_http_error_is_never_retried(tmp_path: Path):

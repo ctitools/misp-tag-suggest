@@ -266,8 +266,9 @@ schema are under `experiments/lfm25/`. Training dependencies are installed with:
 uv sync --group training
 ```
 
-See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for results, compute
-costs, remote-code audit, licensing caveat and the no-test-read decision.
+See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for retrieval results
+and [`docs/sol-flex-canary-report.md`](docs/sol-flex-canary-report.md) for the later
+fail-closed HTTP 400 canary halt. No synthetic output was admitted or trained.
 
 ## Security boundaries
 
