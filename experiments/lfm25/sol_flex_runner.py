@@ -33,6 +33,7 @@ SAFETY_IDENTIFIER = "misp-suggest-research"
 TIMEOUT_SECONDS = 900.0
 MAX_FLEX_RETRIES = 2
 MAX_RATE_LIMIT_RETRIES = 5
+MAX_LOCAL_OUTPUT_RETRIES = 2
 RATE_LIMIT_BACKOFF_BASE_SECONDS = 15.0
 RATE_LIMIT_BACKOFF_MAX_SECONDS = 300.0
 HARD_BUDGET_USD = 200.0
@@ -73,6 +74,10 @@ _POLICY_ERROR_RE = re.compile(
 
 class EmergencyHalt(RuntimeError):
     """A global, persistent stop condition; no later request may be sent."""
+
+
+class LocalOutputReject(RuntimeError):
+    """A non-safety output defect: reject the row and continue within bounds."""
 
 
 class OrdinaryFlexRetry(RuntimeError):
@@ -547,7 +552,7 @@ def extract_bundle(response: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
     if incomplete is not None:
         if str(incomplete.get("reason", "")) == "content_filter":
             raise EmergencyHalt("response content_filter signal")
-        raise EmergencyHalt("response is incomplete")
+        raise LocalOutputReject("response is incomplete")
     if response.get("status") != "completed":
         raise EmergencyHalt("response status is not completed")
     texts: list[str] = []
@@ -560,15 +565,15 @@ def extract_bundle(response: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
             if content.get("type") == "output_text":
                 texts.append(str(content.get("text", "")))
     if len(texts) != 1 or not texts[0].strip():
-        raise EmergencyHalt("response did not contain exactly one output_text")
+        raise LocalOutputReject("response did not contain exactly one output_text")
     if _WARNING_RE.search(texts[0]):
         raise EmergencyHalt("suspicious warning or filtering language in output")
     try:
         bundle = json.loads(texts[0])
     except json.JSONDecodeError as exc:
-        raise EmergencyHalt("malformed JSON output") from exc
+        raise LocalOutputReject("malformed JSON output") from exc
     if not isinstance(bundle, dict):
-        raise EmergencyHalt("structured output root is not an object")
+        raise LocalOutputReject("structured output root is not an object")
     try:
         cost, usage = actual_cost(response["usage"])
     except (KeyError, TypeError, ValueError) as exc:
@@ -624,7 +629,10 @@ def run(
     accepted = 0
     skipped = 0
     sent = 0
-    for seed in seeds:
+    rejected_attempts = 0
+    skipped_invalid = 0
+    queue = [(seed, 0) for seed in seeds]
+    for seed, generation_attempt in queue:
         bundle_id = str(seed.get("bundle_id", "unknown"))
         if bundle_id in accepted_before:
             skipped += 1
@@ -648,7 +656,7 @@ def run(
                 if committed + reservation > budget_usd + 1e-12:
                     raise EmergencyHalt("pessimistic budget reservation would breach ceiling")
                 reservation_id = sha256_bytes(
-                    f"{stage}\x1f{bundle_id}\x1f{retry}\x1f{sha256_bytes(body)}".encode()
+                    f"{stage}\x1f{bundle_id}\x1f{generation_attempt}\x1f{retry}\x1f{sha256_bytes(body)}".encode()
                 )[:24]
                 ledger.append(
                     {
@@ -656,6 +664,7 @@ def run(
                         "stage": stage,
                         "bundle_id": bundle_id,
                         "retry": retry,
+                        "generation_attempt": generation_attempt,
                         "reservation_id": reservation_id,
                         "reservation_usd": reservation,
                         "budget_ceiling_usd": budget_usd,
@@ -720,7 +729,35 @@ def run(
                 break
             if response is None:
                 raise EmergencyHalt("no response after Flex request")
-            bundle, usage, cost = extract_bundle(response)
+            try:
+                bundle, usage, cost = extract_bundle(response)
+            except LocalOutputReject as exc:
+                rejected_attempts += 1
+                ledger.append(
+                    {
+                        "kind": "rejected_output",
+                        "stage": stage,
+                        "bundle_id": bundle_id,
+                        "generation_attempt": generation_attempt,
+                        "reason": str(exc),
+                        "response_id": response.get("id"),
+                        "unix_time": time.time(),
+                    }
+                )
+                if generation_attempt < MAX_LOCAL_OUTPUT_RETRIES:
+                    queue.append((seed, generation_attempt + 1))
+                else:
+                    skipped_invalid += 1
+                    ledger.append(
+                        {
+                            "kind": "skipped_invalid",
+                            "stage": stage,
+                            "bundle_id": bundle_id,
+                            "attempts": generation_attempt + 1,
+                            "unix_time": time.time(),
+                        }
+                    )
+                continue
             ledger.append(
                 {
                     "kind": "settlement",
@@ -738,7 +775,33 @@ def run(
             errors = validate_bundle(bundle, schema=schema, valid_tags=set(seed["candidate_tags"]))
             errors.extend(validate_seed_contract(bundle, seed))
             if errors:
-                raise EmergencyHalt("generated bundle validation failed: " + "; ".join(errors[:8]))
+                rejected_attempts += 1
+                ledger.append(
+                    {
+                        "kind": "rejected_output",
+                        "stage": stage,
+                        "bundle_id": bundle_id,
+                        "generation_attempt": generation_attempt,
+                        "reason": "generated bundle validation failed: " + "; ".join(errors[:8]),
+                        "response_id": response.get("id"),
+                        "bundle_sha256": sha256_bytes(canonical_bytes(bundle)),
+                        "unix_time": time.time(),
+                    }
+                )
+                if generation_attempt < MAX_LOCAL_OUTPUT_RETRIES:
+                    queue.append((seed, generation_attempt + 1))
+                else:
+                    skipped_invalid += 1
+                    ledger.append(
+                        {
+                            "kind": "skipped_invalid",
+                            "stage": stage,
+                            "bundle_id": bundle_id,
+                            "attempts": generation_attempt + 1,
+                            "unix_time": time.time(),
+                        }
+                    )
+                continue
             output_append(output, bundle)
             ledger.append(
                 {
@@ -775,6 +838,8 @@ def run(
         "accepted": accepted,
         "skipped": skipped,
         "http_attempts": sent,
+        "rejected_attempts": rejected_attempts,
+        "skipped_invalid": skipped_invalid,
         "budget_committed_usd": ledger.budget_committed(),
         "budget_ceiling_usd": budget_usd,
         "halted": False,

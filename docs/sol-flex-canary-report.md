@@ -16,12 +16,15 @@ before any live request. The runner:
 - performs a structural privacy gate before opening HTTP;
 - pessimistically reserves spend before each attempt;
 - initially retried only HTTP 408 and exact HTTP 429 Resource Unavailable responses;
-- persists a global brake on refusal, filtering, policy errors, malformed output,
-  unexpected service tier/model, privacy failures, or budget failures.
+- persists a global brake on refusal, filtering, policy errors, unexpected service
+  tier/model, privacy failures, or budget failures.
 
 Mocked tests demonstrated that a refusal or content filter on request N prevents
 request N+1. Privacy, malformed JSON, wrong model/tier, budget, seed-contract and
-policy-error cases were also covered.
+policy-error cases were also covered. After operator clarification, malformed local
+outputs and label-contract defects became bounded row rejections rather than server
+safety signals: they receive at most two fresh generations, are never admitted, and
+do not disable unrelated requests.
 
 ## Live canary result
 

@@ -1,6 +1,6 @@
 # Synthetic scenario specification
 
-**Status:** schema, seed preparation, and a fail-closed Flex runner are implemented. The first live canary halted on an OpenAI strict-schema compatibility error; a corrected diagnostic passed all validators. The full canary has not resumed. See `docs/sol-flex-canary-report.md`.
+**Status:** schema, seed preparation, and a fail-closed Flex runner are implemented. Server refusal/filter/policy signals stop globally; ordinary malformed local rows are rejected with bounded retries. A corrected diagnostic passed all validators and canary continuation is in progress. See `docs/sol-flex-canary-report.md`.
 
 ## Purpose
 

@@ -187,7 +187,6 @@ def test_content_filter_prevents_later_request(tmp_path: Path):
     ("mutation", "message"),
     [
         (lambda response: response.update(service_tier="default"), "service tier"),
-        (lambda response: response["output"][0]["content"][0].update(text="not json"), "malformed JSON"),
         (lambda response: response.update(model="gpt-5.6-luna"), "response model"),
     ],
 )
@@ -313,7 +312,29 @@ def test_policy_http_error_is_never_retried(tmp_path: Path):
     assert calls == 1
 
 
-def test_seed_contract_mutation_halts(tmp_path: Path):
+def test_local_malformed_output_is_bounded_and_does_not_set_brake(tmp_path: Path):
+    value = seed()
+    calls = 0
+
+    def transport(body, headers, timeout):
+        nonlocal calls
+        calls += 1
+        response = json.loads(response_for(value).body)
+        response["output"][0]["content"][0]["text"] = "not json"
+        return HTTPResult(200, json.dumps(response).encode(), {})
+
+    report = run(
+        [value], schema=schema(), stage="canary", budget_usd=2,
+        transport=transport, **paths(tmp_path)
+    )
+    assert calls == 3
+    assert report["accepted"] == 0
+    assert report["rejected_attempts"] == 3
+    assert report["skipped_invalid"] == 1
+    assert not (tmp_path / "HALTED.json").exists()
+
+
+def test_seed_contract_mutation_is_retried_then_skipped(tmp_path: Path):
     value = seed()
 
     def transport(body, headers, timeout):
@@ -323,5 +344,11 @@ def test_seed_contract_mutation_halts(tmp_path: Path):
         response["output"][0]["content"][0]["text"] = json.dumps(invalid)
         return HTTPResult(200, json.dumps(response).encode(), {})
 
-    with pytest.raises(EmergencyHalt, match="seed contract"):
-        run([value], schema=schema(), stage="canary", budget_usd=2, transport=transport, **paths(tmp_path))
+    report = run(
+        [value], schema=schema(), stage="canary", budget_usd=2,
+        transport=transport, **paths(tmp_path)
+    )
+    assert report["accepted"] == 0
+    assert report["rejected_attempts"] == 3
+    assert report["skipped_invalid"] == 1
+    assert not (tmp_path / "HALTED.json").exists()
