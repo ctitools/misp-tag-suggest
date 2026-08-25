@@ -21,8 +21,19 @@ from typing import Any
 import numpy as np
 
 from experiments.classifier.model import checkpoint_size, load_checkpoint
-from experiments.lfm25.benchmark import BGE_MODEL, BGE_REVISION, ModelSpec, evaluate_model
-from experiments.lfm25.metrics import FAMILIES, paired_bootstrap_delta, ranking_metrics
+from experiments.lfm25.benchmark import (
+    BGE_MODEL,
+    BGE_REVISION,
+    ModelSpec,
+    evaluate_model,
+    search_topk,
+)
+from experiments.lfm25.metrics import (
+    FAMILIES,
+    candidate_recall_metrics,
+    paired_bootstrap_delta,
+    ranking_metrics,
+)
 from tagrec.families import label_family
 from tagrec.io import iter_jsonl, write_json_secure
 
@@ -96,6 +107,7 @@ def evaluate_classifier(
         raise RuntimeError("classifier must expose at least 50 labels")
 
     predictions: list[list[str]] = []
+    validation_embedding_parts: list[np.ndarray] = []
     score_started = time.perf_counter()
     with torch.no_grad():
         for start in range(0, len(validation_rows), batch_size):
@@ -113,14 +125,53 @@ def evaluate_classifier(
                 else torch.autocast(device_type="cpu", enabled=False)
             )
             with context:
-                logits = model(inputs)
+                embeddings = model.embeddings(inputs)
+                logits = model.classifier(
+                    embeddings * model.logit_scale.exp().clamp(max=100.0)
+                ) + model.calibration_bias
+            validation_embedding_parts.append(embeddings.float().cpu().numpy())
             indices = torch.topk(logits.float(), k=50, dim=1).indices.cpu().tolist()
             predictions.extend([[labels[index] for index in row] for row in indices])
     score_seconds = time.perf_counter() - score_started
+    validation_embeddings = np.concatenate(validation_embedding_parts)
+
+    train_embedding_parts: list[np.ndarray] = []
+    train_encode_started = time.perf_counter()
+    with torch.no_grad():
+        for start in range(0, len(train_rows), batch_size):
+            inputs = tokenizer(
+                [str(row["text"]) for row in train_rows[start : start + batch_size]],
+                padding=True,
+                truncation=True,
+                max_length=int(config["max_length"]),
+                return_tensors="pt",
+            )
+            inputs = {key: value.to(device) for key, value in inputs.items()}
+            context = (
+                torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+                if device.startswith("cuda")
+                else torch.autocast(device_type="cpu", enabled=False)
+            )
+            with context:
+                train_embedding_parts.append(
+                    model.embeddings(inputs).float().cpu().numpy()
+                )
+    train_encode_seconds = time.perf_counter() - train_encode_started
+    train_embeddings = np.concatenate(train_embedding_parts)
     peak_gpu_bytes = (
         int(torch.cuda.max_memory_allocated()) if device.startswith("cuda") else 0
     )
     del model
+    gc.collect()
+    if device.startswith("cuda"):
+        torch.cuda.empty_cache()
+    _, neighbors, search_seconds = search_topk(
+        train_embeddings,
+        validation_embeddings,
+        top_k=50,
+        device=device,
+    )
+    del train_embeddings, validation_embeddings
     gc.collect()
     if device.startswith("cuda"):
         torch.cuda.empty_cache()
@@ -144,6 +195,7 @@ def evaluate_classifier(
         }
         for row in validation_rows
     ]
+    train_labels = [list(map(str, row.get("labels", []))) for row in train_rows]
     slices = {
         "all": [True] * len(validation_rows),
         "analyst": [not bool(row.get("feed_derived")) for row in validation_rows],
@@ -159,7 +211,14 @@ def evaluate_classifier(
             )
             cuts[truth_name][slice_name] = {
                 "ranking": ranking,
-                "candidate_recall@50": candidate_metrics(
+                "candidate_recall@50": candidate_recall_metrics(
+                    row_truth,
+                    neighbors,
+                    train_labels,
+                    selected=selected,
+                    neighbor_count=50,
+                ),
+                "classifier_label_recall@50": candidate_metrics(
                     row_truth, predictions, selected=selected, top_k=50
                 ),
             }
@@ -177,14 +236,21 @@ def evaluate_classifier(
         "checkpoint_bytes": checkpoint_size(path),
         "classifier": {
             "ranking": "top sigmoid logits",
-            "candidate_count": 50,
+            "reported_label_count": 50,
             "abstention_applied": False,
-            "tail_fallback_applied": False,
+        },
+        "candidate_retrieval": {
+            "encoder": "same classifier encoder; no second model",
+            "index": "exact normalized inner product",
+            "neighbor_count": 50,
         },
         "timing": {
             "load_seconds": load_seconds,
             "validation_score_seconds": score_seconds,
+            "train_encode_seconds": train_encode_seconds,
+            "candidate_search_seconds": search_seconds,
             "validation_events_per_second": len(validation_rows) / score_seconds,
+            "train_events_per_second": len(train_rows) / train_encode_seconds,
         },
         "peak_gpu_allocated_bytes": peak_gpu_bytes,
         "process_max_rss_kib": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss),

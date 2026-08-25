@@ -57,5 +57,8 @@ The benchmark first recomputes the pinned BGE nearest-event baseline, then
 reports paired bootstrap intervals. A frequent-label classifier cannot emit a
 long-tail tag, so metrics retain all validation truth available in the training
 vocabulary rather than silently restricting truth to the classifier labels.
-Candidate recall uses the classifier's top 50 outputs. No abstention or retrieval
-fallback is applied in this first controlled comparison.
+Ranking uses the classifier logits. Candidate recall is independently measured
+with the same encoder's 50 nearest historical events, so it remains comparable to
+the production BGE candidate metric without loading a second encoder. The report
+also records recall from the classifier's top 50 labels under the distinct
+`classifier_label_recall@50` name. No abstention is applied.
