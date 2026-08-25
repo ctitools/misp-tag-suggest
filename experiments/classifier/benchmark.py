@@ -264,6 +264,12 @@ def main() -> int:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument(
+        "--evaluation-split",
+        choices=("val", "test"),
+        default="val",
+        help="test requires a manifest produced by prepare_test and must run once",
+    )
+    parser.add_argument(
         "--classifier",
         action="append",
         required=True,
@@ -276,10 +282,17 @@ def main() -> int:
 
     manifest_path = args.data / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if manifest.get("test_split_used") is not False:
-        raise RuntimeError("prepared benchmark manifest must explicitly exclude test")
+    if args.evaluation_split == "test":
+        if manifest.get("test_split_used") is not True or "test" not in manifest.get(
+            "splits_included", []
+        ):
+            raise RuntimeError("test evaluation requires a one-time test manifest")
+    elif manifest.get("test_split_used") is not False:
+        raise RuntimeError("validation benchmark manifest must explicitly exclude test")
     train_rows = list(iter_jsonl(args.data / "train.jsonl.gz"))
-    validation_rows = list(iter_jsonl(args.data / "val.jsonl.gz"))
+    validation_rows = list(
+        iter_jsonl(args.data / f"{args.evaluation_split}.jsonl.gz")
+    )
 
     baseline_spec = ModelSpec("bge", BGE_MODEL, BGE_REVISION, False, False)
     print("benchmarking bge retrieval baseline", flush=True)
@@ -334,8 +347,8 @@ def main() -> int:
         "schema_version": 1,
         "benchmark": "supervised multilabel classifier versus nearest-event retrieval",
         "frozen": True,
-        "splits_used": ["train", "val"],
-        "test_used": False,
+        "splits_used": ["train", args.evaluation_split],
+        "test_used": args.evaluation_split == "test",
         "prepared_manifest_sha256": sha256(manifest_path),
         "source_manifest_sha256": manifest.get("source_manifest_sha256"),
         "counts": {

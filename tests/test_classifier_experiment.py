@@ -14,6 +14,7 @@ from experiments.classifier.model import (
     select_top_labels,
     supervised_rows,
 )
+from experiments.classifier.prepare_test import verify_gate
 
 
 def test_top_labels_are_native_frequency_ranked_with_stable_ties() -> None:
@@ -79,3 +80,57 @@ def test_family_calibration_can_promote_relevant_attack_labels() -> None:
     assert before["precision@3"] == 0.0
     assert offsets["attack-technique"] > 0
     assert after["precision@3"] == pytest.approx(1 / 3)
+
+
+def test_test_access_gate_requires_quality_coverage_and_cpu() -> None:
+    model_name = "challenger"
+    family_results = {
+        f"native-only/analyst/{family}-recall@3": {
+            "delta": 0.0,
+            "ci95_low": -0.01,
+            "ci95_high": 0.01,
+        }
+        for family in (
+            "incident-class",
+            "attack-technique",
+            "malware-family",
+            "context",
+        )
+    }
+    adoption = {
+        "models": {
+            "bge": {
+                "cuts": {
+                    "native-only": {"analyst": {"candidate_recall@50": {"macro_recall": 0.8}}}
+                }
+            },
+            model_name: {
+                "cuts": {
+                    "native-only": {"analyst": {"candidate_recall@50": {"macro_recall": 0.85}}}
+                }
+            },
+        },
+        "paired_comparisons": {
+            f"{model_name}-minus-bge": {
+                "native-only/analyst/precision@3": {
+                    "delta": 0.05,
+                    "ci95_low": 0.03,
+                    "ci95_high": 0.07,
+                },
+                **family_results,
+            }
+        },
+    }
+    bge_cpu = {"p95_milliseconds": 100.0, "process_max_rss_kib": 1000, "test_used": False}
+    classifier_cpu = {
+        "p95_milliseconds": 105.0,
+        "process_max_rss_kib": 1050,
+        "test_used": False,
+    }
+    result = verify_gate(adoption, bge_cpu, classifier_cpu, model_name=model_name)
+    assert result["precision_delta"] == 0.05
+    adoption["paired_comparisons"][f"{model_name}-minus-bge"][
+        "native-only/analyst/precision@3"
+    ]["delta"] = 0.02
+    with pytest.raises(RuntimeError, match="precision"):
+        verify_gate(adoption, bge_cpu, classifier_cpu, model_name=model_name)
