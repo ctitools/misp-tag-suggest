@@ -115,11 +115,19 @@ def main() -> int:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument(
+        "--maximum-family-regression",
+        type=float,
+        default=0.0,
+        help="maximum absolute train-calibration recall loss allowed per family",
+    )
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
 
     import torch
 
+    if args.maximum_family_regression < 0:
+        raise ValueError("maximum family regression cannot be negative")
     manifest = json.loads((args.data / "manifest.json").read_text(encoding="utf-8"))
     if manifest.get("test_split_used") is not False:
         raise RuntimeError("input manifest must explicitly exclude test")
@@ -178,12 +186,11 @@ def main() -> int:
         label_families,
         {family: 0.0 for family in FAMILIES},
     )
-    maximum_family_regression = 0.01
     offsets, history = optimize_offsets(
         logits,
         truth_indices,
         label_families,
-        maximum_family_regression=maximum_family_regression,
+        maximum_family_regression=args.maximum_family_regression,
     )
     after = evaluate_offsets(logits, truth_indices, label_families, offsets)
     if after["objective"] < before["objective"] or not math.isfinite(after["objective"]):
@@ -212,7 +219,7 @@ def main() -> int:
         "calibration_start_index": calibration_start,
         "calibration_rows": len(calibration_rows),
         "family_biases": offsets,
-        "maximum_absolute_family_regression": maximum_family_regression,
+        "maximum_absolute_family_regression": args.maximum_family_regression,
         "before": before,
         "after": after,
         "search_history": history,
