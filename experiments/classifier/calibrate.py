@@ -58,11 +58,18 @@ def optimize_offsets(
     logits: np.ndarray,
     truth_indices: list[set[int]],
     label_families: list[str],
+    *,
+    maximum_family_regression: float = 0.01,
 ) -> tuple[dict[str, float], list[dict[str, Any]]]:
-    """Deterministic coordinate search; incident-class is the zero anchor."""
+    """Coordinate search with an absolute per-family train-calibration guardrail."""
     offsets = {family: 0.0 for family in FAMILIES}
     history: list[dict[str, Any]] = []
-    grid = np.arange(-6.0, 6.0001, 0.25)
+    baseline = evaluate_offsets(logits, truth_indices, label_families, offsets)
+    family_floor = {
+        family: baseline["per_family_recall@3"][family] - maximum_family_regression
+        for family in FAMILIES
+    }
+    grid = np.arange(-4.0, 4.0001, 0.1)
     for round_index in range(3):
         changed = False
         for family in FAMILIES[1:]:
@@ -77,6 +84,11 @@ def optimize_offsets(
                 trial = dict(offsets)
                 trial[family] = float(candidate)
                 metrics = evaluate_offsets(logits, truth_indices, label_families, trial)
+                if any(
+                    metrics["per_family_recall@3"][name] < floor
+                    for name, floor in family_floor.items()
+                ):
+                    continue
                 key = (metrics["objective"], metrics["precision@3"], -abs(candidate))
                 if key > best_key:
                     best_key = key
@@ -166,7 +178,13 @@ def main() -> int:
         label_families,
         {family: 0.0 for family in FAMILIES},
     )
-    offsets, history = optimize_offsets(logits, truth_indices, label_families)
+    maximum_family_regression = 0.01
+    offsets, history = optimize_offsets(
+        logits,
+        truth_indices,
+        label_families,
+        maximum_family_regression=maximum_family_regression,
+    )
     after = evaluate_offsets(logits, truth_indices, label_families, offsets)
     if after["objective"] < before["objective"] or not math.isfinite(after["objective"]):
         raise RuntimeError("family calibration did not improve its train-only objective")
@@ -194,6 +212,7 @@ def main() -> int:
         "calibration_start_index": calibration_start,
         "calibration_rows": len(calibration_rows),
         "family_biases": offsets,
+        "maximum_absolute_family_regression": maximum_family_regression,
         "before": before,
         "after": after,
         "search_history": history,
