@@ -71,6 +71,11 @@ def resolve_specs(args: argparse.Namespace) -> list[ModelSpec]:
                 True,
             )
         )
+    for value in args.extra_model:
+        name, separator, model_path = value.partition("=")
+        if not separator or not name.strip() or not model_path.strip():
+            raise ValueError("--extra-model must use NAME=PATH")
+        specs.append(ModelSpec(name.strip(), model_path.strip(), None, True, True))
     if not specs:
         raise ValueError("at least one model is required")
     if len({spec.name for spec in specs}) != len(specs):
@@ -267,6 +272,13 @@ def main() -> int:
     parser.add_argument("--models", default="bge,lfm")
     parser.add_argument("--custom-model", type=Path)
     parser.add_argument("--custom-name", default="lfm-real-only")
+    parser.add_argument(
+        "--extra-model",
+        action="append",
+        default=[],
+        metavar="NAME=PATH",
+        help="additional local asymmetric model; repeat as needed",
+    )
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
