@@ -34,6 +34,8 @@ def test_weighted_votes_and_metrics_are_deterministic():
     assert ranking["precision@3"] == 1 / 3
     assert ranking["recall@3"] == 1.0
     assert rows["precision@3"].shape == (2,)
+    assert rows["incident-class-recall@3"].shape == (1,)
+    assert rows["malware-family-recall@3"].shape == (1,)
     candidates = candidate_recall_metrics(truth, neighbors, train_labels)
     assert candidates["macro_recall"] == 1.0
 

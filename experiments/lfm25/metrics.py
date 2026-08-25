@@ -103,6 +103,10 @@ def ranking_metrics(
         "precision@3": np.asarray(precision_rows, dtype=np.float32),
         "recall@3": np.asarray(recall_rows, dtype=np.float32),
         "hit@3": np.asarray(hit_rows, dtype=np.float32),
+        **{
+            f"{family}-recall@3": np.asarray(family_recall[family], dtype=np.float32)
+            for family in FAMILIES
+        },
     }
     return metrics, rows
 

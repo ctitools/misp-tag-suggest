@@ -320,6 +320,10 @@ def main() -> int:
             "all-labels/analyst/precision@3",
             "native-only/analyst/precision@3",
             "native-only/analyst/recall@3",
+            "native-only/analyst/incident-class-recall@3",
+            "native-only/analyst/attack-technique-recall@3",
+            "native-only/analyst/malware-family-recall@3",
+            "native-only/analyst/context-recall@3",
         ):
             comparison[key] = paired_bootstrap_delta(
                 baseline_rows[key], rows_by_model[name][key]
