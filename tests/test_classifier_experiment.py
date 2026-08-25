@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from experiments.classifier.benchmark import candidate_metrics
+from experiments.classifier.calibrate import evaluate_offsets, optimize_offsets
 from experiments.classifier.model import (
     asymmetric_loss,
     prevalence_bias,
@@ -60,3 +61,21 @@ def test_classifier_candidate_metrics_keep_tail_truth_in_denominator() -> None:
     result = candidate_metrics(truth, predictions, selected=[True, True], top_k=2)
     assert result["macro_recall"] == pytest.approx(0.75)
     assert result["events_with_truth"] == 2
+
+
+def test_family_calibration_can_promote_relevant_attack_labels() -> None:
+    logits = np.asarray(
+        [
+            [4.0, 3.0, 2.0, 1.0],
+            [4.0, 3.0, 2.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    truth = [{3}, {3}]
+    families = ["incident-class", "malware-family", "context", "attack-technique"]
+    before = evaluate_offsets(logits, truth, families, {})
+    offsets, _ = optimize_offsets(logits, truth, families)
+    after = evaluate_offsets(logits, truth, families, offsets)
+    assert before["precision@3"] == 0.0
+    assert offsets["attack-technique"] > 0
+    assert after["precision@3"] == pytest.approx(1 / 3)

@@ -87,12 +87,20 @@ def main() -> int:
     parser.add_argument("--warmup-ratio", type=float, default=0.1)
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--calibration-fraction",
+        type=float,
+        default=0.0,
+        help="chronological tail of train to reserve for family-score calibration",
+    )
     parser.add_argument("--freeze-encoder", action="store_true")
     parser.add_argument("--device", default="cuda")
     args = parser.parse_args()
 
     if not args.device.startswith("cuda"):
         raise RuntimeError("CUDA is required for the controlled classifier training run")
+    if not 0.0 <= args.calibration_fraction < 0.5:
+        raise ValueError("calibration fraction must be in [0, 0.5)")
     import numpy as np
     import sentence_transformers
     import torch
@@ -124,12 +132,14 @@ def main() -> int:
 
     tag_documents = load_tag_documents(args.tag_docs)
     all_train_rows = list(iter_jsonl(args.data / "train.jsonl.gz"))
+    calibration_start = round(len(all_train_rows) * (1.0 - args.calibration_fraction))
+    fit_rows = all_train_rows[:calibration_start]
     labels, counts = select_top_labels(
-        all_train_rows, limit=args.labels, allowed=set(tag_documents)
+        fit_rows, limit=args.labels, allowed=set(tag_documents)
     )
     if len(labels) != args.labels:
         raise RuntimeError(f"requested {args.labels} labels but selected {len(labels)}")
-    train_rows = supervised_rows(all_train_rows, labels)
+    train_rows = supervised_rows(fit_rows, labels)
     label_to_index = {label: index for index, label in enumerate(labels)}
     biases = prevalence_bias(labels, counts, len(train_rows))
 
@@ -280,6 +290,9 @@ def main() -> int:
             "gamma_positive": 0.0,
             "negative_clip": 0.05,
         },
+        "calibration_fraction": args.calibration_fraction,
+        "calibration_start_index": calibration_start,
+        "family_biases": {},
     }
     write_json_secure(args.output / "classifier_config.json", config)
     del model
@@ -309,6 +322,8 @@ def main() -> int:
         "test_used": False,
         "training": {
             "all_train_rows": len(all_train_rows),
+            "fit_partition_rows": len(fit_rows),
+            "reserved_calibration_rows": len(all_train_rows) - len(fit_rows),
             "supervised_train_rows": len(train_rows),
             "label_count": len(labels),
             "minimum_label_frequency": min(frequencies),

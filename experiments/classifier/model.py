@@ -135,6 +135,9 @@ def build_model(
             hidden_size = int(self.encoder.config.hidden_size)
             self.classifier = torch.nn.Linear(hidden_size, label_count)
             self.logit_scale = torch.nn.Parameter(torch.tensor(math.log(5.0)))
+            self.register_buffer(
+                "calibration_bias", torch.zeros(label_count), persistent=False
+            )
 
         def embeddings(self, inputs: dict[str, Any]) -> Any:
             output = self.encoder(**inputs)
@@ -142,7 +145,7 @@ def build_model(
 
         def forward(self, inputs: dict[str, Any]) -> Any:
             scale = self.logit_scale.exp().clamp(max=100.0)
-            return self.classifier(self.embeddings(inputs) * scale)
+            return self.classifier(self.embeddings(inputs) * scale) + self.calibration_bias
 
     model = BgeMultilabelClassifier()
     if device is not None:
@@ -174,6 +177,16 @@ def load_checkpoint(path: Path, *, device: str) -> tuple[Any, Any, dict[str, Any
         {"weight": state["classifier.weight"], "bias": state["classifier.bias"]}
     )
     model.logit_scale.data.copy_(state["logit_scale"].to(device))
+    family_biases = config.get("family_biases", {})
+    if family_biases:
+        from tagrec.families import label_family
+
+        model.calibration_bias.copy_(
+            torch.tensor(
+                [float(family_biases.get(label_family(label), 0.0)) for label in config["labels"]],
+                device=device,
+            )
+        )
     model.eval()
     tokenizer = AutoTokenizer.from_pretrained(
         str(tokenizer_source), revision=revision, trust_remote_code=False
