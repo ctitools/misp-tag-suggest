@@ -4,6 +4,10 @@ This track tests whether direct supervised classification of frequent MISP tags 
 stronger and cheaper than nearest-event retrieval. It is deliberately separate
 from the LFM2.5 retrieval work.
 
+The selected top-1,000 configuration cleared validation but was rejected after its
+single test read because incident and attack ranking recall regressed significantly.
+BGE retrieval remains deployed. See `docs/bge-multilabel-classifier-report.md`.
+
 ## Design
 
 - Select the top 500 or 1,000 labels by `native_labels` frequency using **train
@@ -40,7 +44,10 @@ uv run --group training python -m experiments.classifier.train \
 ```
 
 Training reads `train.jsonl.gz` only. The data manifest may mention validation,
-but the training script does not open it.
+but the training script does not open it. Use `--calibration-fraction 0.1` to
+reserve a chronological train tail, then run `experiments.classifier.calibrate`.
+The calibrator defaults to zero family regression; a bounded allowance must be
+explicit and is recorded in its report.
 
 ## Validation benchmark
 
@@ -62,3 +69,9 @@ with the same encoder's 50 nearest historical events, so it remains comparable t
 the production BGE candidate metric without loading a second encoder. The report
 also records recall from the classifier's top 50 labels under the distinct
 `classifier_label_recall@50` name. No abstention is applied.
+
+`experiments.classifier.prepare_test` is fail-closed: it requires a `+0.03`
+validation P@3 delta, a positive paired interval, no significant family regression,
+non-regressing candidate recall, and CPU p95/RSS within 20% of BGE. It refuses to
+write over an existing output. Test preparation and benchmarking were performed
+once for the selected checkpoint; do not reuse that test split for future tuning.

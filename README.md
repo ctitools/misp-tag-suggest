@@ -251,25 +251,34 @@ uv run pytest -q
 
 They cover export pagination and credential handling, taxonomy snapshotting, dataset construction and validation, index creation, retrieval voting and abstention, API contracts, ACL ordering, canonicalization, and repository hygiene. GitHub Actions runs the same suite on every push and pull request.
 
-## Experimental LFM2.5 research
+## Experimental research
 
-The shipped demo remains the pinned BGE retriever. A validation-only experiment with
-`LiquidAI/LFM2.5-Embedding-350M` found that the frozen model was worse, while one
-epoch of capped real-only training improved analyst native-label P@3 over BGE by
-`0.0221` with a positive paired confidence interval. That is promising but below the
-predeclared adoption target, so LFM is not enabled in the API.
+The shipped demo remains the pinned BGE retriever.
 
-The reproducible benchmark, pair builder, training script and privacy-safe synthetic
-schema are under `experiments/lfm25/`. Training dependencies are installed with:
+A real-only `LiquidAI/LFM2.5-Embedding-350M` fine-tune improved analyst native-label
+P@3 over BGE by `0.0221`, below the predeclared adoption target. A later controlled
+25% synthetic mix reached a `+0.0275` validation delta versus BGE but did not
+significantly beat real-only LFM and introduced family regressions. LFM is therefore
+not enabled in the API. Reproducible LFM and privacy-preserving generation code is
+under `experiments/lfm25/`.
+
+A supervised top-1,000 multilabel head on BGE produced a much larger validation P@3
+gain with essentially unchanged CPU latency and memory. It retained the fine-tuned
+encoder for nearest-event candidate retrieval. The frozen configuration was allowed
+one test read, where overall P@3 still improved but incident and attack ranking recall
+regressed significantly. It was rejected and the test is now consumed. Code is under
+`experiments/classifier/`; see
+[`docs/bge-multilabel-classifier-report.md`](docs/bge-multilabel-classifier-report.md).
+
+Training dependencies are installed with:
 
 ```bash
 uv sync --group training
 ```
 
-See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for retrieval results
-and [`docs/sol-flex-canary-report.md`](docs/sol-flex-canary-report.md) for the later
-fail-closed HTTP 400 canary halt and successful schema-compatibility diagnosis. No
-synthetic output has yet been admitted or trained.
+See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for LFM retrieval
+results and [`docs/sol-flex-canary-report.md`](docs/sol-flex-canary-report.md) for
+synthetic-generation controls and diagnostics.
 
 ## Security boundaries
 
