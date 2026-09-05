@@ -29,7 +29,7 @@ dev = [
 ]
 training = [
   "accelerate>=1.12,<2",
-  "datasets>=4.5,<5",
+  "datasets>=4.5,<6",
 ]
 
 [tool.uv.sources]
