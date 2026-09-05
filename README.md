@@ -325,6 +325,8 @@ See [`docs/lfm25-m1-m3-report.md`](docs/lfm25-m1-m3-report.md) for LFM retrieval
 results and [`docs/sol-flex-canary-report.md`](docs/sol-flex-canary-report.md) for
 synthetic-generation controls and diagnostics.
 
+Open improvements and the benchmark plan are in [`docs/IMPROVEMENTS.md`](docs/IMPROVEMENTS.md).
+
 ## Security boundaries
 
 - MISP is contacted only by `scripts.export_events` and `scripts.snapshot_taxonomy`.

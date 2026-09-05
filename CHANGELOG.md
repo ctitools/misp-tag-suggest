@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-05 (backlog)
+
+- `docs/IMPROVEMENTS.md`: why the first module-side benchmark (P 0.27 / R 0.13) measured the label policy rather than the model, and the ordered plan: `/labels` endpoint, admissible-gold sampling, held-out dates, family metrics, then per-family thresholds and smaller k, near-dedup rebuild, LLM re-ranking of candidates in the module; operations items (systemd, GPU torch extra, rebuild cadence).
+
 ## 2026-09-05 (harmonized with generic-ai-misp-module)
 
 - Renamed the project `misp-suggest` → `misp-tag-suggest` (pyproject, API title, README, research code identifiers).
