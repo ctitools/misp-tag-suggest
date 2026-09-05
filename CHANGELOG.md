@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-05 (docs review)
+
+- `app.py` loads `.env` (python-dotenv, shell wins), so `SUGGEST_API_KEY`, `MODEL_DEVICE`, `RETRIEVAL_ARTIFACTS`, `POC_ACL_FILE` can live next to the MISP keys; `.env.example` lists `SUGGEST_API_KEY`. README: which settings `.env` covers, disk/time reference numbers, detached start and stop, "Rebuilding" (restart after a new index), complete abstention example and its second meaning, troubleshooting for 401 and `No route to host`.
+
 ## 2026-09-05 (backlog)
 
 - `docs/IMPROVEMENTS.md`: why the first module-side benchmark (P 0.27 / R 0.13) measured the label policy rather than the model, and the ordered plan: `/labels` endpoint, admissible-gold sampling, held-out dates, family metrics, then per-family thresholds and smaller k, near-dedup rebuild, LLM re-ranking of candidates in the module; operations items (systemd, GPU torch extra, rebuild cadence).

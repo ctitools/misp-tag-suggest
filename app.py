@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
@@ -17,10 +18,12 @@ from tagrec.canonicalize import canonicalize_event
 from tagrec.diversify import collapse_similar_neighbors
 
 ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / ".env")  # process environment wins over .env
 ARTIFACTS = Path(os.getenv("RETRIEVAL_ARTIFACTS", ROOT / "artifacts/retrieval"))
 DEVICE = os.getenv("MODEL_DEVICE") or None
 SEARCH_DEPTH = int(os.getenv("SIMILAR_SEARCH_DEPTH", "5000"))
 # Optional shared secret for callers such as generic-ai-misp-module; unset = no check (loopback).
+# Read from .env or the environment, like RETRIEVAL_ARTIFACTS, MODEL_DEVICE and POC_ACL_FILE.
 API_KEY = os.getenv("SUGGEST_API_KEY", "")
 
 

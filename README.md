@@ -17,7 +17,8 @@ You need:
 - Linux or macOS and Python 3.14 (same floor as generic-ai-misp-module);
 - [`uv`](https://docs.astral.sh/uv/);
 - a MISP API key with **read-only** access to events, tags, taxonomies, and galaxies;
-- enough private disk space for your MISP export and generated embeddings.
+- enough private disk space for your MISP export and generated embeddings (reference: 82,000
+  events → 9.4 GB raw export in ~2 h with one worker, 25 min dataset build, 190 MB of index).
 
 The default installation deliberately uses CPU-only PyTorch, avoiding several gigabytes of unexpected CUDA packages. Allow roughly 2 GB for the Python environment and downloaded encoder before accounting for your data. A small smoke export works on an ordinary machine. A large MISP may need 10+ GB of additional free disk and several hours to export and encode. Keep the repository and generated files on an access-controlled host.
 
@@ -40,6 +41,9 @@ MISP_VERIFY_SSL=true
 ```
 
 The three keys are named exactly as in generic-ai-misp-module, so one `.env` can serve both.
+`.env` is read by the export/snapshot scripts and by the API (`app.py`); every setting below
+(`SUGGEST_API_KEY`, `MODEL_DEVICE`, `RETRIEVAL_ARTIFACTS`, `POC_ACL_FILE`) can be put there
+or exported in the shell, the shell winning.
 Keep TLS verification enabled. Never commit `.env` or put the API key in a command line.
 
 ## 3. Verify MISP export access
@@ -174,8 +178,16 @@ MODEL_DEVICE=cuda .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --worke
 The full deployment on the CIRCL developer host, with the numbers of the first index build,
 is written up in generic-ai-misp-module `docs/DEPLOY_TAG_SUGGEST.md`.
 
-Set `SUGGEST_API_KEY=<secret>` in the environment to require the header `X-Api-Key: <secret>` on
-`/suggest` and `/similar` (unset: no check, loopback demo only).
+Set `SUGGEST_API_KEY=<secret>` (in `.env` or the environment) to require the header
+`X-Api-Key: <secret>` on `/suggest` and `/similar` (unset or empty: no check, loopback demo only).
+
+To run detached, `mkdir -p logs && nohup env MODEL_DEVICE=cpu .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1 > logs/service.log 2>&1 &`;
+stop with `pkill -f "uvicorn app:app"`.
+
+**Rebuilding.** The service loads the index once, at the first request. After a new export
+(steps 4-7, the exporter resumes and `--overwrite` starts over) restart the service; `/health`
+does not change, but `/suggest` reports the new `dataset_manifest_sha256` and re-run the
+module benchmark (generic-ai-misp-module `benchmarks/run_suggest.py`).
 
 ## 9. Request tag suggestions
 
@@ -204,11 +216,15 @@ The response contains ranked tags and retrieval vote scores. If the event is unl
 ```json
 {
   "suggestions": [],
-  "abstained": true
+  "abstained": true,
+  "model_version": "BAAI/bge-base-en-v1.5@a5beb1e3e68b",
+  "dataset_manifest_sha256": "…"
 }
 ```
 
-Abstention is expected behavior, not an error. Suggestions are never written back to MISP.
+`abstained` is also `true` when the nearest events carry no admissible label (feed events tagged
+only `tlp:*`, for example; the label policy is in `tagrec/allowlist.py`). Abstention is expected
+behavior, not an error. Suggestions are never written back to MISP.
 
 ## 10. Request similar events
 
@@ -248,8 +264,10 @@ The response includes similarity, event ID, title, date, historical tags, and `g
 
 ## Troubleshooting
 
+- **`401 X-Api-Key is missing or wrong`** — `SUGGEST_API_KEY` is set; send the header, or unset it for a loopback demo.
+- **`No route to host` during export** — the host resolves the MISP name to an address it cannot route (seen with an IPv6-only DNS answer on a host without IPv6); fix DNS/routing or use an address that works from that host.
 - **`503 Retrieval index not built`** — complete step 7 or set `RETRIEVAL_ARTIFACTS` to the artifact directory.
-- **PyTorch or device error** — use the documented CPU commands unless you intentionally installed a compatible CUDA build.
+- **PyTorch or device error** — use the documented CPU commands unless you intentionally installed a compatible CUDA build; `uv run` re-syncs to the CPU lock, start from `.venv/bin/` after a GPU swap.
 - **No tag suggestions** — the system may be abstaining, or the indexed training events may have too few eligible tags. Inspect `manifest.json` and `training_metrics.json`.
 - **No similar events** — check `X-Actor` and `POC_ACL_FILE`; access is denied by default.
 - **TLS certificate error** — install the correct CA certificate. Set `MISP_VERIFY_SSL=false` only for an isolated test where the risk is understood.
