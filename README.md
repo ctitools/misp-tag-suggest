@@ -163,6 +163,17 @@ Open:
 
 A healthy, indexed service reports `"artifacts_ready": true`. The model loads lazily on the first inference request.
 
+GPU: the lock pins CPU-only torch. After `uv sync`, swap it for a CUDA build and start the
+service from `.venv/bin/` (`uv run` would re-sync back to CPU):
+
+```bash
+uv pip install --python .venv/bin/python "torch==2.11.0+cu128" --index-url https://download.pytorch.org/whl/cu128
+MODEL_DEVICE=cuda .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+The full deployment on the CIRCL developer host, with the numbers of the first index build,
+is written up in generic-ai-misp-module `docs/DEPLOY_TAG_SUGGEST.md`.
+
 Set `SUGGEST_API_KEY=<secret>` in the environment to require the header `X-Api-Key: <secret>` on
 `/suggest` and `/similar` (unset: no check, loopback demo only).
 
