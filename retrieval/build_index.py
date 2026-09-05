@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build and tune full-corpus semantic retrieval using train/validation only."""
 
+# pylint: disable=import-outside-toplevel  # torch/faiss are imported lazily; tests replace them
 from __future__ import annotations
 
 import argparse
@@ -55,7 +56,9 @@ def vote_predictions(
                 continue
             for label in train_rows[int(neighbor)].get("labels", []):
                 scores[str(label)] += float(weight) / denominator
-        output.append(sorted(scores, key=lambda label: (-scores[label], label))[:top_n])
+        output.append(
+            [label for label, _ in sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))][:top_n]
+        )
     return output
 
 
@@ -133,7 +136,8 @@ def main() -> int:
     data_dir = Path(args.data_dir)
     artifacts = Path(args.artifacts)
     artifacts.mkdir(parents=True, exist_ok=True)
-    os.chmod(artifacts, 0o700)
+    # owner-only directory is intended (semgrep insecure-file-permissions)
+    os.chmod(artifacts, 0o700)  # nosemgrep
     manifest_bytes = (data_dir / "manifest.json").read_bytes()
     manifest = json.loads(manifest_bytes)
     train_rows = list(iter_jsonl(data_dir / "train.jsonl"))
@@ -208,8 +212,7 @@ def main() -> int:
         ),
     )
     validation_candidate_recall = {
-        f"candidate_recall@{k}": candidate_recall(truth, neighbors, train_rows, k)
-        for k in k_values
+        f"candidate_recall@{k}": candidate_recall(truth, neighbors, train_rows, k) for k in k_values
     }
     params = {
         "schema_version": 1,

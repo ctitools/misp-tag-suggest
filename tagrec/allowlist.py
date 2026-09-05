@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 STANDARD_NAMESPACES = {
     "rsit",
     "ecsirt",
@@ -168,11 +167,15 @@ def decide_tag(tag: str) -> TagDecision:
 
     if namespace == "circl":
         eligible = predicate in {"incident-classification", "topic"}
-        return TagDecision(eligible, "eligible-circl" if eligible else "circl-predicate-excluded", parsed)
+        return TagDecision(
+            eligible, "eligible-circl" if eligible else "circl-predicate-excluded", parsed
+        )
 
     if namespace == "misp":
         eligible = predicate == "event-type"
-        return TagDecision(eligible, "eligible-misp-event-type" if eligible else "misp-predicate-excluded", parsed)
+        return TagDecision(
+            eligible, "eligible-misp-event-type" if eligible else "misp-predicate-excluded", parsed
+        )
 
     if namespace == "veris" and predicate == "confidence":
         return TagDecision(False, "excluded-estimative", parsed)
@@ -185,7 +188,11 @@ def decide_tag(tag: str) -> TagDecision:
 
     if namespace == "stone":
         eligible = predicate in {"incident-classification", "malware-categorization"}
-        return TagDecision(eligible, "eligible-stone-descriptive" if eligible else "stone-predicate-excluded", parsed)
+        return TagDecision(
+            eligible,
+            "eligible-stone-descriptive" if eligible else "stone-predicate-excluded",
+            parsed,
+        )
 
     if namespace in ORG_SPECIFIC_NAMESPACES:
         if _looks_judgmental(predicate):

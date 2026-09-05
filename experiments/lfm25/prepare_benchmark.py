@@ -56,9 +56,9 @@ def prepare_split(source: Path, destination: Path, *, max_chars: int) -> dict[st
                 "native_labels": native_labels,
                 "feed_derived": bool(row.get("feed_derived")),
             }
-            encoded = (
-                json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n"
-            ).encode("utf-8")
+            encoded = (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
+                "utf-8"
+            )
             compressed.write(encoded)
             rows += 1
             labeled += bool(value["labels"])

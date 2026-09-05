@@ -21,14 +21,14 @@ from experiments.lfm25.validate_synthetic import validate_bundle
 def test_weighted_votes_and_metrics_are_deterministic():
     similarities = np.asarray([[0.9, 0.5], [0.8, 0.2]], dtype=np.float32)
     neighbors = np.asarray([[0, 1], [1, 0]], dtype=np.int32)
-    train_labels = [["rsit:fraud=\"phishing\""], ["misp-galaxy:malpedia=\"Example\""]]
+    train_labels = [['rsit:fraud="phishing"'], ['misp-galaxy:malpedia="Example"']]
     predictions = weighted_vote_predictions(
         similarities, neighbors, train_labels, neighbor_count=2, top_k=3
     )
-    assert predictions[0][0] == "rsit:fraud=\"phishing\""
+    assert predictions[0][0] == 'rsit:fraud="phishing"'
     truth = [
-        {"rsit:fraud=\"phishing\""},
-        {"misp-galaxy:malpedia=\"Example\""},
+        {'rsit:fraud="phishing"'},
+        {'misp-galaxy:malpedia="Example"'},
     ]
     ranking, rows = ranking_metrics(truth, predictions)
     assert ranking["precision@3"] == 1 / 3
@@ -49,9 +49,7 @@ def test_paired_bootstrap_requires_and_preserves_pairing():
 
 
 def test_partial_text_preserves_info_and_first_evidence_quarter():
-    text = "\n".join(
-        ["[INFO] fictional incident"] + [f"[ATTR] evidence-{i}" for i in range(8)]
-    )
+    text = "\n".join(["[INFO] fictional incident"] + [f"[ATTR] evidence-{i}" for i in range(8)])
     partial = partial_text(text)
     assert partial.splitlines() == [
         "[INFO] fictional incident",
@@ -106,9 +104,7 @@ def _valid_bundle() -> dict:
 
 def test_synthetic_bundle_validator_accepts_only_reserved_indicators():
     root = Path(__file__).resolve().parents[1]
-    schema = json.loads(
-        (root / "experiments/lfm25/synthetic_bundle.schema.json").read_text()
-    )
+    schema = json.loads((root / "experiments/lfm25/synthetic_bundle.schema.json").read_text())
     bundle = _valid_bundle()
     assert validate_bundle(bundle, schema=schema, valid_tags=set(bundle["candidate_tags"])) == []
 
@@ -137,7 +133,7 @@ def test_synthetic_admission_leakage_check_ignores_generic_other_only():
     generic = _valid_bundle()
     generic["target_tag"] = 'cssa:origin="other"'
     generic["scenarios"][1]["event"]["info"] = "Other provenance remains uncategorized."
-    assert leakage_errors(generic) == []
+    assert not leakage_errors(generic)
 
     leaked = _valid_bundle()
     leaked["scenarios"][1]["event"]["info"] = "Exact phishing target appears here."

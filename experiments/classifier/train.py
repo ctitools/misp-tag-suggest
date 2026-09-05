@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import os
 import platform
 import random
@@ -113,7 +112,8 @@ def main() -> int:
         raise RuntimeError("CUDA is unavailable")
     if not transformers.__version__.startswith("4.57."):
         raise RuntimeError(
-            f"pinned classifier training requires transformers 4.57.*, got {transformers.__version__}"
+            "pinned classifier training requires transformers 4.57.*, "
+            f"got {transformers.__version__}"
         )
     manifest_path = args.data / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -134,9 +134,7 @@ def main() -> int:
     all_train_rows = list(iter_jsonl(args.data / "train.jsonl.gz"))
     calibration_start = round(len(all_train_rows) * (1.0 - args.calibration_fraction))
     fit_rows = all_train_rows[:calibration_start]
-    labels, counts = select_top_labels(
-        fit_rows, limit=args.labels, allowed=set(tag_documents)
-    )
+    labels, counts = select_top_labels(fit_rows, limit=args.labels, allowed=set(tag_documents))
     if len(labels) != args.labels:
         raise RuntimeError(f"requested {args.labels} labels but selected {len(labels)}")
     train_rows = supervised_rows(fit_rows, labels)
@@ -232,8 +230,7 @@ def main() -> int:
         running_loss = 0.0
         for inputs, targets in loader:
             inputs = {
-                key: value.to(args.device, non_blocking=True)
-                for key, value in inputs.items()
+                key: value.to(args.device, non_blocking=True) for key, value in inputs.items()
             }
             targets = targets.to(args.device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)

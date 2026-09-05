@@ -110,7 +110,7 @@ def fetch_page_to_part(
             os.replace(temporary, path)
             os.chmod(path, 0o600)
             return page, count, digest.hexdigest()
-        except Exception as error:
+        except Exception as error:  # pylint: disable=broad-exception-caught  # retried below
             last_error = error
             temporary.unlink(missing_ok=True)
             if attempt < retries:
@@ -149,7 +149,9 @@ def existing_progress(
         page += 1
 
 
-def concatenate_parts(destination: Path, parts_dir: Path, final_page: int, compressed: bool) -> None:
+def concatenate_parts(
+    destination: Path, parts_dir: Path, final_page: int, compressed: bool
+) -> None:
     """Concatenate gzip members (or plain shards) without decompression."""
     temporary = destination.with_suffix(destination.suffix + ".tmp")
     try:
@@ -206,7 +208,8 @@ def main() -> int:
         shutil.rmtree(parts_dir, ignore_errors=True)
     destination.with_suffix(destination.suffix + ".tmp").unlink(missing_ok=True)
     parts_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(parts_dir, 0o700)
+    # owner-only directory is intended (semgrep insecure-file-permissions)
+    os.chmod(parts_dir, 0o700)  # nosemgrep
 
     stat = os.statvfs(destination.parent)
     free_gb = stat.f_bavail * stat.f_frsize / 1024**3
@@ -216,7 +219,9 @@ def main() -> int:
     settings = load_misp_settings(args.env)
     next_page, total, final_page = existing_progress(parts_dir, args.page_size, compressed)
     if total:
-        print(f"Resuming after page {next_page - 1} ({total} events already saved)", file=sys.stderr)
+        print(
+            f"Resuming after page {next_page - 1} ({total} events already saved)", file=sys.stderr
+        )
 
     previous_signature: str | None = None
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
@@ -247,7 +252,8 @@ def main() -> int:
                 count, signature = results[page]
                 if signature and signature == previous_signature:
                     print(
-                        f"MISP repeated page {page - 1} as page {page}; stopping before duplicate data",
+                        f"MISP repeated page {page - 1} as page {page}; "
+                        "stopping before duplicate data",
                         file=sys.stderr,
                     )
                     # The repeated shard is discarded, so the export ends at its predecessor.

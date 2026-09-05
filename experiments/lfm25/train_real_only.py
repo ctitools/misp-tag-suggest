@@ -73,7 +73,10 @@ def main() -> int:
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for this training run")
     pair_manifest = json.loads(args.pair_manifest.read_text(encoding="utf-8"))
-    if pair_manifest.get("validation_used") is not False or pair_manifest.get("test_used") is not False:
+    if (
+        pair_manifest.get("validation_used") is not False
+        or pair_manifest.get("test_used") is not False
+    ):
         raise RuntimeError("real-only pair manifest must exclude validation and test")
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -91,9 +94,7 @@ def main() -> int:
         device="cuda",
     )
     model.max_seq_length = 512
-    loss = CachedMultipleNegativesRankingLoss(
-        model, mini_batch_size=args.mini_batch_size
-    )
+    loss = CachedMultipleNegativesRankingLoss(model, mini_batch_size=args.mini_batch_size)
     steps_per_epoch = max(1, len(dataset) // args.batch_size)
     training_args = SentenceTransformerTrainingArguments(
         output_dir=str(args.output / "checkpoints"),
@@ -145,9 +146,7 @@ def main() -> int:
     # separate shell invocation performs the clean-process check before retrieval.
     del trainer, model
     torch.cuda.empty_cache()
-    reloaded = SentenceTransformer(
-        str(final_dir), trust_remote_code=True, device="cuda"
-    )
+    reloaded = SentenceTransformer(str(final_dir), trust_remote_code=True, device="cuda")
     probe = reloaded.encode(
         ["Fictional defensive incident summary."],
         prompt_name="query",
@@ -157,9 +156,7 @@ def main() -> int:
     if probe.shape != (1, 1024) or not np.isfinite(probe).all():
         raise RuntimeError(f"saved model reload probe failed: shape={probe.shape}")
 
-    freeze = subprocess.check_output(
-        [sys.executable, "-m", "pip", "freeze"], text=True
-    )
+    freeze = subprocess.check_output([sys.executable, "-m", "pip", "freeze"], text=True)
     (args.output / "dependency-freeze.txt").write_text(freeze, encoding="utf-8")
     os.chmod(args.output / "dependency-freeze.txt", 0o600)
     report = {

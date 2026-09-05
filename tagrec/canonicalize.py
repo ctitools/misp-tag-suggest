@@ -13,7 +13,18 @@ from urllib.parse import urlsplit
 import tldextract
 
 _EXTRACT = tldextract.TLDExtract(suffix_list_urls=())
-_HASH_TYPES = {"md5", "sha1", "sha224", "sha256", "sha384", "sha512", "ssdeep", "tlsh", "imphash", "authentihash"}
+_HASH_TYPES = {
+    "md5",
+    "sha1",
+    "sha224",
+    "sha256",
+    "sha384",
+    "sha512",
+    "ssdeep",
+    "tlsh",
+    "imphash",
+    "authentihash",
+}
 _IP_TYPES = {"ip-src", "ip-dst", "ip-src|port", "ip-dst|port"}
 _DOMAIN_TYPES = {"domain", "hostname", "domain|ip"}
 _URL_TYPES = {"url", "uri"}
@@ -45,7 +56,7 @@ def _registered_domain(value: str) -> str:
     cleaned = value.strip().lower().replace("[.]", ".").replace("(.)", ".")
     try:
         ext = _EXTRACT(cleaned)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return ""
     return ext.top_domain_under_public_suffix or cleaned.strip(".")
 
@@ -96,7 +107,7 @@ def normalize_attribute_value(attribute_type: str, value: Any) -> str:
         return ""
 
     if attr_type in {"ip-src|port", "ip-dst|port"} and "|" in text:
-        ip, port = text.split("|", 1)
+        _ip, port = text.split("|", 1)
         return f"<IP>:{clean_text(port)}"
     if attr_type == "malware-sample" and "|" in text:
         filename, digest = text.split("|", 1)
@@ -108,13 +119,15 @@ def normalize_attribute_value(attribute_type: str, value: Any) -> str:
         subtypes = attr_type.split("|")
         values = text.split("|", len(subtypes) - 1)
         if len(subtypes) == len(values):
-            return "|".join(normalize_attribute_value(t, v) for t, v in zip(subtypes, values, strict=True))
+            return "|".join(
+                normalize_attribute_value(t, v) for t, v in zip(subtypes, values, strict=True)
+            )
 
     if attr_type in _HASH_TYPES or _HEX_HASH_RE.fullmatch(text):
         return f"<HASH:{attr_type}>" if attr_type in _HASH_TYPES else "<HASH>"
     if attr_type == "ip" or attr_type in _IP_TYPES or attr_type.startswith("ip-"):
         if "|" in text:
-            ip, port = text.split("|", 1)
+            _ip, port = text.split("|", 1)
             return f"<IP>:{clean_text(port)}"
         return "<IP>"
     if attr_type in _URL_TYPES:
@@ -163,7 +176,11 @@ def canonicalize_event(raw: dict[str, Any]) -> str:
         lines.append(f"[INFO] {info}")
 
     reports = sorted(
-        (r for r in (event.get("EventReport", []) or []) if isinstance(r, dict) and not r.get("deleted")),
+        (
+            r
+            for r in (event.get("EventReport", []) or [])
+            if isinstance(r, dict) and not r.get("deleted")
+        ),
         key=lambda r: (str(r.get("id", "")), str(r.get("uuid", ""))),
     )
     for report in reports:

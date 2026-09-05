@@ -127,7 +127,9 @@ class TaxonomyCatalog:
                         key = _expanded_key(str(alias or ""))
                         if not key:
                             continue
-                        galaxy_alias_candidates.setdefault((galaxy_type.lower(), key), set()).add(tag)
+                        galaxy_alias_candidates.setdefault((galaxy_type.lower(), key), set()).add(
+                            tag
+                        )
                 if galaxy_type == "mitre-attack-pattern":
                     for technique_id in _technique_ids(cluster):
                         attack_candidates.setdefault(technique_id, []).append(tag)
@@ -161,9 +163,7 @@ class TaxonomyCatalog:
             key: next(iter(tags)) for key, tags in casefold_candidates.items() if len(tags) == 1
         }
         galaxy_alias_map = {
-            key: next(iter(tags))
-            for key, tags in galaxy_alias_candidates.items()
-            if len(tags) == 1
+            key: next(iter(tags)) for key, tags in galaxy_alias_candidates.items() if len(tags) == 1
         }
         summary = snapshot.get("summary", {}) or {}
         return cls(
@@ -224,7 +224,9 @@ class TaxonomyCatalog:
         # Historical event tags frequently differ only by case or missing quote delimiters.
         value = (parsed.value or "").strip().strip('"')
         reconstructed = (
-            f'{parsed.namespace}:{parsed.predicate}="{value}"' if parsed.value is not None else normalized
+            f'{parsed.namespace}:{parsed.predicate}="{value}"'
+            if parsed.value is not None
+            else normalized
         )
         casefold_match = self.casefold_tag_map.get(reconstructed.casefold())
         if casefold_match:

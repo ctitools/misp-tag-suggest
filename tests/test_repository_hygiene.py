@@ -7,9 +7,7 @@ from pathlib import Path
 def test_private_runtime_files_are_ignored():
     root = Path(__file__).resolve().parents[1]
     for name in (".env", "acl.json", "data/example.json", "artifacts/model.npz"):
-        result = subprocess.run(
-            ["git", "check-ignore", "-q", name], cwd=root, check=False
-        )
+        result = subprocess.run(["git", "check-ignore", "-q", name], cwd=root, check=False)
         assert result.returncode == 0, f"{name} is not ignored"
 
 

@@ -126,7 +126,10 @@ def main() -> int:
         if not isinstance(detail, dict):
             raise RuntimeError(f"Unexpected taxonomy response for {metadata.get('namespace')}")
         taxonomies.append(compact_taxonomy(detail))
-        print(f"Taxonomy {number}/{len(taxonomies_index)}: {metadata.get('namespace')}", file=sys.stderr)
+        print(
+            f"Taxonomy {number}/{len(taxonomies_index)}: {metadata.get('namespace')}",
+            file=sys.stderr,
+        )
 
     galaxies: list[dict[str, Any]] = []
     for number, item in enumerate(galaxies_index, start=1):
@@ -159,7 +162,8 @@ def main() -> int:
             "enabled_galaxy_count": sum(g["enabled"] for g in galaxies),
             "galaxy_cluster_count": sum(len(g["clusters"]) for g in galaxies),
             "custom_tag_count": len(custom_tags),
-            "bounded_smoke_snapshot": args.max_taxonomies is not None or args.max_galaxies is not None,
+            "bounded_smoke_snapshot": args.max_taxonomies is not None
+            or args.max_galaxies is not None,
         },
     }
 
@@ -180,7 +184,8 @@ def main() -> int:
     if snapshot["summary"]["enabled_taxonomy_count"] == 0:
         print(
             "WARNING: this MISP instance reports zero enabled standard taxonomies; "
-            "dataset policy must explicitly decide whether installed-but-disabled entries are valid targets.",
+            "dataset policy must explicitly decide whether installed-but-disabled entries "
+            "are valid targets.",
             file=sys.stderr,
         )
     return 0

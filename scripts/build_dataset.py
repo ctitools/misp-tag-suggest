@@ -92,7 +92,7 @@ def event_tag_names(event: dict[str, Any]) -> list[str]:
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
 
 
@@ -121,9 +121,15 @@ def make_record(
     feed_derived = orgc.lower() in feed_orgs or any(
         tag.lower().startswith(FEED_TAG_PREFIXES) for tag in all_tags
     )
-    objects = [obj for obj in (event.get("Object", []) or []) if isinstance(obj, dict) and not obj.get("deleted")]
+    objects = [
+        obj
+        for obj in (event.get("Object", []) or [])
+        if isinstance(obj, dict) and not obj.get("deleted")
+    ]
     event_attributes = [
-        attr for attr in (event.get("Attribute", []) or []) if isinstance(attr, dict) and not attr.get("deleted")
+        attr
+        for attr in (event.get("Attribute", []) or [])
+        if isinstance(attr, dict) and not attr.get("deleted")
     ]
     object_attribute_count = sum(
         1
@@ -214,7 +220,11 @@ def deduplicate(
                     uf.union(candidate, index)
             lsh.insert(str(index), signature)
             if (index + 1) % 1000 == 0:
-                print(f"Near-dedup signatures: {index + 1}/{len(records)}", file=sys.stderr, flush=True)
+                print(
+                    f"Near-dedup signatures: {index + 1}/{len(records)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     clusters: dict[int, list[int]] = defaultdict(list)
     for index in range(len(records)):
@@ -239,7 +249,7 @@ def choose_representatives(
 ) -> list[tuple[str, int]]:
     """Return (cluster_id, stream_index) representatives in chronological order."""
     representatives: list[tuple[str, int]] = []
-    ordered_clusters = sorted(clusters.values(), key=lambda members: min(members))
+    ordered_clusters = sorted(clusters.values(), key=min)
     for cluster_number, members in enumerate(ordered_clusters, start=1):
         representative_index = min(members, key=lambda index: _date_key(records[index]))
         representatives.append((f"c{cluster_number:06d}", representative_index))
@@ -284,7 +294,9 @@ def write_splits(
     counts = {split: 0 for split in SPLITS}
     written = 0
     try:
-        handles = {split: temporary.open("w", encoding="utf-8") for split, temporary in temporaries.items()}
+        handles = {
+            split: temporary.open("w", encoding="utf-8") for split, temporary in temporaries.items()
+        }
         try:
             for index, raw in enumerate(iter_jsonl(raw_path)):
                 if max_events and index >= max_events:
@@ -312,11 +324,17 @@ def write_splits(
                     "n_attributes": record.n_attributes,
                     "n_objects": record.n_objects,
                 }
-                handles[split].write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
+                handles[split].write(
+                    json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n"
+                )
                 counts[split] += 1
                 written += 1
                 if written % 1000 == 0:
-                    print(f"Wrote {written}/{len(assignments)} representatives", file=sys.stderr, flush=True)
+                    print(
+                        f"Wrote {written}/{len(assignments)} representatives",
+                        file=sys.stderr,
+                        flush=True,
+                    )
         finally:
             for handle in handles.values():
                 handle.close()
@@ -350,7 +368,10 @@ def main() -> int:
         parser.error("--near-threshold must be in (0, 1]")
 
     snapshot = json.loads(Path(args.taxonomy).read_text(encoding="utf-8"))
-    if snapshot.get("summary", {}).get("bounded_smoke_snapshot") and not args.allow_bounded_snapshot:
+    if (
+        snapshot.get("summary", {}).get("bounded_smoke_snapshot")
+        and not args.allow_bounded_snapshot
+    ):
         raise SystemExit("Refusing to build from a bounded smoke-test taxonomy snapshot")
     catalog = TaxonomyCatalog.load(
         args.taxonomy,
@@ -411,7 +432,8 @@ def main() -> int:
         "taxonomy_snapshot_date": catalog.snapshot_date,
         "require_enabled_taxonomies": args.require_enabled_taxonomies,
         "warning": (
-            "MISP reports zero enabled standard taxonomies; installed taxonomy definitions were used for validation."
+            "MISP reports zero enabled standard taxonomies; "
+            "installed taxonomy definitions were used for validation."
             if catalog.enabled_taxonomy_count == 0 and not args.require_enabled_taxonomies
             else None
         ),

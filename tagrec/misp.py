@@ -26,11 +26,11 @@ class MISPSettings:
 
 def load_misp_settings(env_path: str | Path = ".env") -> MISPSettings:
     load_dotenv(Path(env_path))
-    url = os.environ.get("MISP_URL")
-    key = os.environ.get("MISP_KEY")
-    verify_tls = env_bool(os.environ.get("MISP_VERIFY_TLS"), default=True)
+    url = os.environ.get("MISP_BASE_URL")
+    key = os.environ.get("MISP_API_KEY")
+    verify_tls = env_bool(os.environ.get("MISP_VERIFY_SSL"), default=True)
     if not url or not key:
-        raise RuntimeError(f"MISP_URL or MISP_KEY missing from {env_path}")
+        raise RuntimeError(f"MISP_BASE_URL or MISP_API_KEY missing from {env_path}")
     if not verify_tls:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     return MISPSettings(url.rstrip("/"), key, verify_tls)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Safe NPZ semantic nearest-event retrieval inference."""
 
+# pylint: disable=import-outside-toplevel  # torch/faiss are imported lazily; tests replace them
 from __future__ import annotations
 
 import argparse
@@ -49,7 +50,10 @@ class SemanticRetrievalSuggester:
         search_k = min(max(k, self.selected_k, 50), len(self.metadata))
         if self._cached_rows_id == id(rows) and self._cached_neighbors is not None:
             if self._cached_neighbors.shape[1] >= search_k:
-                return self._cached_similarities, self._cached_neighbors  # type: ignore[return-value]
+                return (
+                    self._cached_similarities,
+                    self._cached_neighbors,
+                )  # type: ignore[return-value]
         embeddings = np.asarray(
             self.model.encode(
                 [str(row.get("text", "")) for row in rows],
@@ -66,9 +70,7 @@ class SemanticRetrievalSuggester:
         self._cached_neighbors = neighbors
         return similarities, neighbors
 
-    def suggest_many(
-        self, rows: list[dict[str, Any]], top_k: int = 10
-    ) -> list[list[Suggestion]]:
+    def suggest_many(self, rows: list[dict[str, Any]], top_k: int = 10) -> list[list[Suggestion]]:
         if not rows:
             return []
         similarities, neighbors = self._search(rows)
@@ -78,9 +80,7 @@ class SemanticRetrievalSuggester:
             denominator = float(weights.sum()) or 1.0
             scores: dict[str, float] = defaultdict(float)
             evidence: dict[str, list[str]] = defaultdict(list)
-            for neighbor, weight in zip(
-                row_neighbors[: self.selected_k], weights, strict=True
-            ):
+            for neighbor, weight in zip(row_neighbors[: self.selected_k], weights, strict=True):
                 if neighbor < 0 or weight <= 0:
                     continue
                 metadata = self.metadata[int(neighbor)]
@@ -89,7 +89,9 @@ class SemanticRetrievalSuggester:
                     scores[tag] += float(weight) / denominator
                     if len(evidence[tag]) < 5:
                         evidence[tag].append(str(metadata.get("event_id", "")))
-            ranked = sorted(scores, key=lambda tag: (-scores[tag], tag))[:top_k]
+            ranked = [tag for tag, _ in sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))][
+                :top_k
+            ]
             output.append(
                 [
                     Suggestion(

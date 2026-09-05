@@ -98,7 +98,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--taxonomy", type=Path, default=Path("data/taxonomy/snapshot.json"))
     parser.add_argument("--out", type=Path, default=Path("artifacts/lfm25/tag-docs.jsonl"))
-    parser.add_argument("--manifest", type=Path, default=Path("artifacts/lfm25/tag-docs-manifest.json"))
+    parser.add_argument(
+        "--manifest", type=Path, default=Path("artifacts/lfm25/tag-docs-manifest.json")
+    )
     args = parser.parse_args()
     catalog = TaxonomyCatalog.load(args.taxonomy)
     rows = build(catalog)
@@ -114,7 +116,10 @@ def main() -> int:
         "by_family": dict(sorted(families.items())),
         "by_kind": dict(sorted(kinds.items())),
         "missing_description_by_kind": dict(sorted(missing.items())),
-        "custom_tag_limitation": "custom tags have no catalog descriptions; documents use canonical name and namespace expansion",
+        "custom_tag_limitation": (
+            "custom tags have no catalog descriptions; "
+            "documents use canonical name and namespace expansion"
+        ),
         "test_used": False,
     }
     write_json_secure(args.manifest, manifest)

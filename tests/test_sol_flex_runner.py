@@ -1,16 +1,16 @@
+# pylint: disable=line-too-long  # recorded HTTP bodies, kept verbatim
 from __future__ import annotations
 
-import copy
 import json
 from pathlib import Path
 
 import pytest
 
 from experiments.lfm25.sol_flex_runner import (
-    EmergencyHalt,
-    HTTPResult,
     MODEL,
     SERVICE_TIER,
+    EmergencyHalt,
+    HTTPResult,
     make_request,
     run,
     safe_http_error_facts,
@@ -31,7 +31,9 @@ def seed(number: int = 1) -> dict:
         "target_family": "incident-class",
         "target_frequency_bucket": "20-99",
         "candidate_tags": candidates,
-        "candidate_documents": {tag: f"Public definition for candidate {i}." for i, tag in enumerate(candidates)},
+        "candidate_documents": {
+            tag: f"Public definition for candidate {i}." for i, tag in enumerate(candidates)
+        },
         "fixed_label_contract": {
             "explicit_positive": {"expected_tags": [target], "relevance": 2},
             "implicit_positive": {"expected_tags": [target], "relevance": 2},
@@ -90,9 +92,7 @@ def response_for(value: dict, **overrides) -> HTTPResult:
         "output": [
             {
                 "type": "message",
-                "content": [
-                    {"type": "output_text", "text": json.dumps(bundle(value))}
-                ],
+                "content": [{"type": "output_text", "text": json.dumps(bundle(value))}],
             }
         ],
         "usage": {
@@ -179,7 +179,14 @@ def test_content_filter_prevents_later_request(tmp_path: Path):
         return HTTPResult(200, json.dumps(filtered).encode(), {})
 
     with pytest.raises(EmergencyHalt, match="content_filter"):
-        run(values, schema=schema(), stage="canary", budget_usd=2, transport=transport, **paths(tmp_path))
+        run(
+            values,
+            schema=schema(),
+            stage="canary",
+            budget_usd=2,
+            transport=transport,
+            **paths(tmp_path),
+        )
     assert calls == 1
 
 
@@ -199,7 +206,14 @@ def test_malformed_or_unexpected_response_halts(tmp_path: Path, mutation, messag
         return HTTPResult(200, json.dumps(response).encode(), {})
 
     with pytest.raises(EmergencyHalt, match=message):
-        run([value], schema=schema(), stage="canary", budget_usd=2, transport=transport, **paths(tmp_path))
+        run(
+            [value],
+            schema=schema(),
+            stage="canary",
+            budget_usd=2,
+            transport=transport,
+            **paths(tmp_path),
+        )
     assert (tmp_path / "HALTED.json").exists()
 
 
@@ -214,12 +228,26 @@ def test_privacy_and_budget_fail_before_http(tmp_path: Path):
     private = seed()
     private["event_id"] = 1853
     with pytest.raises(EmergencyHalt, match="privacy gate"):
-        run([private], schema=schema(), stage="canary", budget_usd=2, transport=transport, **paths(tmp_path))
+        run(
+            [private],
+            schema=schema(),
+            stage="canary",
+            budget_usd=2,
+            transport=transport,
+            **paths(tmp_path),
+        )
     assert calls == 0
 
     other = tmp_path / "budget"
     with pytest.raises(EmergencyHalt, match="budget reservation"):
-        run([seed()], schema=schema(), stage="canary", budget_usd=0.001, transport=transport, **paths(other))
+        run(
+            [seed()],
+            schema=schema(),
+            stage="canary",
+            budget_usd=0.001,
+            transport=transport,
+            **paths(other),
+        )
     assert calls == 0
 
 
@@ -234,8 +262,13 @@ def test_only_documented_flex_errors_retry(tmp_path: Path):
         return results.pop(0)
 
     report = run(
-        [value], schema=schema(), stage="canary", budget_usd=2, transport=transport,
-        sleep=lambda _: None, **paths(tmp_path)
+        [value],
+        schema=schema(),
+        stage="canary",
+        budget_usd=2,
+        transport=transport,
+        sleep=lambda _: None,
+        **paths(tmp_path),
     )
     assert report["http_attempts"] == 2
     assert report["accepted"] == 1
@@ -271,8 +304,13 @@ def test_rate_limit_uses_bounded_exponential_backoff(tmp_path: Path):
         return results.pop(0)
 
     report = run(
-        [value], schema=schema(), stage="canary", budget_usd=2, transport=transport,
-        sleep=delays.append, **paths(tmp_path)
+        [value],
+        schema=schema(),
+        stage="canary",
+        budget_usd=2,
+        transport=transport,
+        sleep=delays.append,
+        **paths(tmp_path),
     )
     assert report["accepted"] == 1
     assert report["http_attempts"] == 3
@@ -293,8 +331,13 @@ def test_rate_limit_retry_count_is_bounded(tmp_path: Path):
 
     with pytest.raises(EmergencyHalt, match="bounded rate_limit_exceeded"):
         run(
-            [seed()], schema=schema(), stage="canary", budget_usd=2,
-            transport=transport, sleep=lambda _: None, **paths(tmp_path)
+            [seed()],
+            schema=schema(),
+            stage="canary",
+            budget_usd=2,
+            transport=transport,
+            sleep=lambda _: None,
+            **paths(tmp_path),
         )
     assert calls == 6  # initial request plus five retries
 
@@ -308,7 +351,14 @@ def test_policy_http_error_is_never_retried(tmp_path: Path):
         return HTTPResult(400, b'{"error":{"message":"safety policy violation"}}', {})
 
     with pytest.raises(EmergencyHalt, match="policy-related"):
-        run([seed()], schema=schema(), stage="canary", budget_usd=2, transport=transport, **paths(tmp_path))
+        run(
+            [seed()],
+            schema=schema(),
+            stage="canary",
+            budget_usd=2,
+            transport=transport,
+            **paths(tmp_path),
+        )
     assert calls == 1
 
 
@@ -324,8 +374,12 @@ def test_local_malformed_output_is_bounded_and_does_not_set_brake(tmp_path: Path
         return HTTPResult(200, json.dumps(response).encode(), {})
 
     report = run(
-        [value], schema=schema(), stage="canary", budget_usd=2,
-        transport=transport, **paths(tmp_path)
+        [value],
+        schema=schema(),
+        stage="canary",
+        budget_usd=2,
+        transport=transport,
+        **paths(tmp_path),
     )
     assert calls == 3
     assert report["accepted"] == 0
@@ -345,8 +399,12 @@ def test_seed_contract_mutation_is_retried_then_skipped(tmp_path: Path):
         return HTTPResult(200, json.dumps(response).encode(), {})
 
     report = run(
-        [value], schema=schema(), stage="canary", budget_usd=2,
-        transport=transport, **paths(tmp_path)
+        [value],
+        schema=schema(),
+        stage="canary",
+        budget_usd=2,
+        transport=transport,
+        **paths(tmp_path),
     )
     assert report["accepted"] == 0
     assert report["rejected_attempts"] == 3

@@ -30,19 +30,14 @@ def select_top_labels(
             if allowed is None or str(label) in allowed
         )
     labels = [
-        label
-        for label, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[
-            :limit
-        ]
+        label for label, _ in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
     ]
     if not labels:
         raise ValueError("no native training labels are available")
     return labels, counts
 
 
-def supervised_rows(
-    rows: Iterable[dict[str, Any]], labels: Sequence[str]
-) -> list[dict[str, Any]]:
+def supervised_rows(rows: Iterable[dict[str, Any]], labels: Sequence[str]) -> list[dict[str, Any]]:
     """Keep rows with at least one in-vocabulary native positive."""
     vocabulary = set(labels)
     return [
@@ -52,9 +47,7 @@ def supervised_rows(
     ]
 
 
-def prevalence_bias(
-    labels: Sequence[str], counts: Counter[str], row_count: int
-) -> list[float]:
+def prevalence_bias(labels: Sequence[str], counts: Counter[str], row_count: int) -> list[float]:
     """Return finite prior logits for classifier-head bias initialization."""
     if row_count < 1:
         raise ValueError("row count must be positive")
@@ -135,9 +128,7 @@ def build_model(
             hidden_size = int(self.encoder.config.hidden_size)
             self.classifier = torch.nn.Linear(hidden_size, label_count)
             self.logit_scale = torch.nn.Parameter(torch.tensor(math.log(5.0)))
-            self.register_buffer(
-                "calibration_bias", torch.zeros(label_count), persistent=False
-            )
+            self.register_buffer("calibration_bias", torch.zeros(label_count), persistent=False)
 
         def embeddings(self, inputs: dict[str, Any]) -> Any:
             output = self.encoder(**inputs)

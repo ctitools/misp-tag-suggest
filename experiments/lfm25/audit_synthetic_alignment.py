@@ -80,7 +80,10 @@ def distinguishability(real_info: list[str], synthetic_info: list[str]) -> dict[
     texts = real + synthetic_info
     labels = np.asarray([0] * len(real) + [1] * len(synthetic_info))
     vectorizer = TfidfVectorizer(
-        analyzer="char_wb", ngram_range=(3, 5), min_df=2, max_features=30_000,
+        analyzer="char_wb",
+        ngram_range=(3, 5),
+        min_df=2,
+        max_features=30_000,
         sublinear_tf=True,
     )
     features = vectorizer.fit_transform(texts)
@@ -101,8 +104,12 @@ def distinguishability(real_info: list[str], synthetic_info: list[str]) -> dict[
 
 def nearest_lexical(real: list[str], synthetic: list[str]) -> dict[str, float | int]:
     vectorizer = TfidfVectorizer(
-        analyzer="word", ngram_range=(1, 2), min_df=2, max_features=40_000,
-        sublinear_tf=True, strip_accents="unicode",
+        analyzer="word",
+        ngram_range=(1, 2),
+        min_df=2,
+        max_features=40_000,
+        sublinear_tf=True,
+        strip_accents="unicode",
     )
     matrix = vectorizer.fit_transform(real + synthetic)
     real_matrix = matrix[: len(real)]
@@ -125,7 +132,9 @@ def main() -> int:
     parser.add_argument("--bundles", type=Path, required=True)
     parser.add_argument("--seeds", type=Path, required=True)
     parser.add_argument("--real-train", type=Path, required=True)
-    parser.add_argument("--schema", type=Path, default=Path(__file__).with_name("synthetic_bundle.schema.json"))
+    parser.add_argument(
+        "--schema", type=Path, default=Path(__file__).with_name("synthetic_bundle.schema.json")
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     schema = json.loads(args.schema.read_text(encoding="utf-8"))
@@ -156,21 +165,27 @@ def main() -> int:
             synthetic_info.append(info_text(canonical))
             attribute_counts.append(
                 len(event.get("attributes", []) or [])
-                + sum(len(item.get("attributes", []) or []) for item in event.get("objects", []) or [])
+                + sum(
+                    len(item.get("attributes", []) or []) for item in event.get("objects", []) or []
+                )
             )
             variant = str(scenario.get("variant", ""))
             variants[variant] += 1
             if (
                 variant in {"implicit_positive", "partial_positive"}
                 and target_value
-                and re.search(r"(?<!\w)" + re.escape(target_value) + r"(?!\w)", canonical.casefold())
+                and re.search(
+                    r"(?<!\w)" + re.escape(target_value) + r"(?!\w)", canonical.casefold()
+                )
             ):
                 target_leaks += 1
     real = read_real_train(args.real_train)
     real_info = [info_text(text) for text in real]
     real_info_words = [words(text) for text in real_info]
     synthetic_info_words = [words(text) for text in synthetic_info]
-    real_attribute_counts = [sum(line.startswith("[ATTR]") for line in text.splitlines()) for text in real]
+    real_attribute_counts = [
+        sum(line.startswith("[ATTR]") for line in text.splitlines()) for text in real
+    ]
     style = {
         "real_info_words": quantiles(real_info_words),
         "synthetic_info_words": quantiles(synthetic_info_words),

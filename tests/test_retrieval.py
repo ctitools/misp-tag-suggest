@@ -1,3 +1,4 @@
+# pylint: disable=protected-access  # exercises the fake encoder directly
 from __future__ import annotations
 
 import json
@@ -5,12 +6,11 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from conftest import write_jsonl
 
 from retrieval import build_index
 from retrieval.retrieve import SemanticRetrievalSuggester
 from tagrec.io import iter_jsonl
-
-from conftest import write_jsonl
 
 
 def test_index_builder_creates_complete_portable_artifacts(
@@ -78,18 +78,19 @@ def test_index_builder_creates_complete_portable_artifacts(
         "training_metrics.json",
     }
     with np.load(artifacts / "train_embeddings.npz", allow_pickle=False) as values:
-        assert values["train"].shape == (3, 4)
+        assert values["train"].shape == (3, 4)  # pylint: disable=no-member
     metadata = list(iter_jsonl(artifacts / "index_meta.jsonl"))
     assert metadata[0]["title"] == "Phishing campaign 100"
     assert metadata[0]["normalized_info"] == "[INFO] Phishing campaign <N>"
     assert metadata[0]["orgc"] == "A"
     assert metadata[0]["dup_cluster"] == "c1"
-    assert json.loads((artifacts / "params.json").read_text())["revision"] == build_index.DEFAULT_REVISION
+    assert (
+        json.loads((artifacts / "params.json").read_text())["revision"]
+        == build_index.DEFAULT_REVISION
+    )
 
 
-def test_retriever_votes_labels_and_applies_event_abstention(
-    tmp_path: Path, fake_ml_modules
-):
+def test_retriever_votes_labels_and_applies_event_abstention(tmp_path: Path, fake_ml_modules):
     artifacts = tmp_path / "artifacts"
     artifacts.mkdir()
     vectors = np.stack(
@@ -125,6 +126,4 @@ def test_retriever_votes_labels_and_applies_event_abstention(
     assert output[0].tag == 'rsit:fraud="phishing"'
     assert output[0].evidence == ("1",)
     assert model.event_acceptance_many(rows) == [True]
-    assert model.candidate_tags_many(rows, neighbor_count=1) == [
-        {'rsit:fraud="phishing"'}
-    ]
+    assert model.candidate_tags_many(rows, neighbor_count=1) == [{'rsit:fraud="phishing"'}]

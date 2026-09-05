@@ -55,9 +55,7 @@ def candidate_metrics(
 ) -> dict[str, Any]:
     values: list[float] = []
     family_values: dict[str, list[float]] = defaultdict(list)
-    for include, row_truth, row_predictions in zip(
-        selected, truth, predictions, strict=True
-    ):
+    for include, row_truth, row_predictions in zip(selected, truth, predictions, strict=True):
         if not include or not row_truth:
             continue
         candidates = set(row_predictions[:top_k])
@@ -65,18 +63,14 @@ def candidate_metrics(
         for family in FAMILIES:
             family_truth = {tag for tag in row_truth if label_family(tag) == family}
             if family_truth:
-                family_values[family].append(
-                    len(family_truth & candidates) / len(family_truth)
-                )
+                family_values[family].append(len(family_truth & candidates) / len(family_truth))
     return {
         "macro_recall": float(np.mean(values)) if values else 0.0,
         "events_with_truth": len(values),
         "per_family": {
             family: {
                 "macro_recall": (
-                    float(np.mean(family_values[family]))
-                    if family_values[family]
-                    else 0.0
+                    float(np.mean(family_values[family])) if family_values[family] else 0.0
                 ),
                 "events": len(family_values[family]),
             }
@@ -126,9 +120,10 @@ def evaluate_classifier(
             )
             with context:
                 embeddings = model.embeddings(inputs)
-                logits = model.classifier(
-                    embeddings * model.logit_scale.exp().clamp(max=100.0)
-                ) + model.calibration_bias
+                logits = (
+                    model.classifier(embeddings * model.logit_scale.exp().clamp(max=100.0))
+                    + model.calibration_bias
+                )
             validation_embedding_parts.append(embeddings.float().cpu().numpy())
             indices = torch.topk(logits.float(), k=50, dim=1).indices.cpu().tolist()
             predictions.extend([[labels[index] for index in row] for row in indices])
@@ -153,14 +148,10 @@ def evaluate_classifier(
                 else torch.autocast(device_type="cpu", enabled=False)
             )
             with context:
-                train_embedding_parts.append(
-                    model.embeddings(inputs).float().cpu().numpy()
-                )
+                train_embedding_parts.append(model.embeddings(inputs).float().cpu().numpy())
     train_encode_seconds = time.perf_counter() - train_encode_started
     train_embeddings = np.concatenate(train_embedding_parts)
-    peak_gpu_bytes = (
-        int(torch.cuda.max_memory_allocated()) if device.startswith("cuda") else 0
-    )
+    peak_gpu_bytes = int(torch.cuda.max_memory_allocated()) if device.startswith("cuda") else 0
     del model
     gc.collect()
     if device.startswith("cuda"):
@@ -176,23 +167,13 @@ def evaluate_classifier(
     if device.startswith("cuda"):
         torch.cuda.empty_cache()
 
-    train_vocabulary = {
-        str(label) for row in train_rows for label in row.get("labels", [])
-    }
+    train_vocabulary = {str(label) for row in train_rows for label in row.get("labels", [])}
     truth = [
-        {
-            str(label)
-            for label in row.get("labels", [])
-            if str(label) in train_vocabulary
-        }
+        {str(label) for label in row.get("labels", []) if str(label) in train_vocabulary}
         for row in validation_rows
     ]
     native_truth = [
-        {
-            str(label)
-            for label in row.get("native_labels", [])
-            if str(label) in train_vocabulary
-        }
+        {str(label) for label in row.get("native_labels", []) if str(label) in train_vocabulary}
         for row in validation_rows
     ]
     train_labels = [list(map(str, row.get("labels", []))) for row in train_rows]
@@ -206,9 +187,7 @@ def evaluate_classifier(
     for truth_name, row_truth in (("all-labels", truth), ("native-only", native_truth)):
         cuts[truth_name] = {}
         for slice_name, selected in slices.items():
-            ranking, rows = ranking_metrics(
-                row_truth, predictions, selected=selected, top_k=3
-            )
+            ranking, rows = ranking_metrics(row_truth, predictions, selected=selected, top_k=3)
             cuts[truth_name][slice_name] = {
                 "ranking": ranking,
                 "candidate_recall@50": candidate_recall_metrics(
@@ -290,9 +269,7 @@ def main() -> int:
     elif manifest.get("test_split_used") is not False:
         raise RuntimeError("validation benchmark manifest must explicitly exclude test")
     train_rows = list(iter_jsonl(args.data / "train.jsonl.gz"))
-    validation_rows = list(
-        iter_jsonl(args.data / f"{args.evaluation_split}.jsonl.gz")
-    )
+    validation_rows = list(iter_jsonl(args.data / f"{args.evaluation_split}.jsonl.gz"))
 
     baseline_spec = ModelSpec("bge", BGE_MODEL, BGE_REVISION, False, False)
     print("benchmarking bge retrieval baseline", flush=True)
@@ -338,9 +315,7 @@ def main() -> int:
             "native-only/analyst/malware-family-recall@3",
             "native-only/analyst/context-recall@3",
         ):
-            comparison[key] = paired_bootstrap_delta(
-                baseline_rows[key], rows_by_model[name][key]
-            )
+            comparison[key] = paired_bootstrap_delta(baseline_rows[key], rows_by_model[name][key])
         comparisons[f"{name}-minus-bge"] = comparison
 
     report = {

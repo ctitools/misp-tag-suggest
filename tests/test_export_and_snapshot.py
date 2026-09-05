@@ -1,8 +1,8 @@
+# pylint: disable=protected-access,invalid-name  # fakes mirror PyMISP / http.server names
 from __future__ import annotations
 
 import gzip
 import json
-import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,9 +37,7 @@ class MISPHandler(BaseHTTPRequestHandler):
         pass
 
 
-def test_streaming_export_against_local_misp_double(
-    tmp_path: Path, monkeypatch, capsys
-):
+def test_streaming_export_against_local_misp_double(tmp_path: Path, monkeypatch, capsys):
     MISPHandler.authorization_headers = []
     server = ThreadingHTTPServer(("127.0.0.1", 0), MISPHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -47,14 +45,14 @@ def test_streaming_export_against_local_misp_double(
     try:
         env = tmp_path / ".env"
         env.write_text(
-            f"MISP_URL=http://127.0.0.1:{server.server_port}\n"
-            "MISP_KEY=super-secret-test-key\n"
-            "MISP_VERIFY_TLS=true\n",
+            f"MISP_BASE_URL=http://127.0.0.1:{server.server_port}\n"
+            "MISP_API_KEY=super-secret-test-key\n"
+            "MISP_VERIFY_SSL=true\n",
             encoding="utf-8",
         )
         out = tmp_path / "events.jsonl.gz"
-        monkeypatch.delenv("MISP_URL", raising=False)
-        monkeypatch.delenv("MISP_KEY", raising=False)
+        monkeypatch.delenv("MISP_BASE_URL", raising=False)
+        monkeypatch.delenv("MISP_API_KEY", raising=False)
         if hasattr(export_events._THREAD_LOCAL, "session"):
             del export_events._THREAD_LOCAL.session
         monkeypatch.setattr(

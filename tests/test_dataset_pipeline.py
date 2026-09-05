@@ -9,9 +9,7 @@ from scripts import build_dataset, validate_dataset
 from tagrec.io import iter_jsonl
 
 
-def test_dataset_build_and_validation_end_to_end(
-    tmp_path: Path, monkeypatch, taxonomy_snapshot
-):
+def test_dataset_build_and_validation_end_to_end(tmp_path: Path, monkeypatch, taxonomy_snapshot):
     taxonomy = tmp_path / "data/taxonomy/snapshot.json"
     taxonomy.parent.mkdir(parents=True)
     taxonomy.write_text(json.dumps(taxonomy_snapshot), encoding="utf-8")

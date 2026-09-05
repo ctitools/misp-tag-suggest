@@ -1,3 +1,4 @@
+# pylint: disable=protected-access,invalid-name  # fakes mirror PyMISP / http.server names
 from __future__ import annotations
 
 import asyncio
@@ -113,9 +114,7 @@ def test_http_health_setup_and_route_contracts(tmp_path: Path, monkeypatch):
     async def scenario():
         async with api.lifespan(api.app):
             transport = httpx.ASGITransport(app=api.app)
-            async with httpx.AsyncClient(
-                transport=transport, base_url="http://test"
-            ) as client:
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
                 health = await client.get("/health")
                 assert health.status_code == 200
                 assert health.json()["status"] == "setup-required"
@@ -125,11 +124,16 @@ def test_http_health_setup_and_route_contracts(tmp_path: Path, monkeypatch):
                 runtime = make_ready(tmp_path, monkeypatch)
                 runtime.acl = {"alice": {"allowed-1", "allowed-2"}}
                 api.app.state.runtime = runtime
-                suggested = await client.post(
-                    "/suggest", json={"event": {"Event": {"info": "x"}}}
-                )
+                suggested = await client.post("/suggest", json={"event": {"Event": {"info": "x"}}})
                 assert suggested.status_code == 200
-                assert suggested.json()["suggestions"][0]["tag"] == "tag:a"
+                # contract relied on by generic-ai-misp-module (genai/suggest.py): keep stable
+                assert set(suggested.json()) == {
+                    "suggestions",
+                    "abstained",
+                    "model_version",
+                    "dataset_manifest_sha256",
+                }
+                assert suggested.json()["suggestions"] == [{"tag": "tag:a", "score": 0.9}]
                 response = await client.post("/similar", json={"event": {}})
                 assert response.status_code == 401
                 similar = await client.post(
@@ -139,5 +143,28 @@ def test_http_health_setup_and_route_contracts(tmp_path: Path, monkeypatch):
                 )
                 assert similar.status_code == 200
                 assert similar.json()["read_only"] is True
+
+    asyncio.run(scenario())
+
+
+def test_api_key_is_checked_only_when_configured(tmp_path: Path, monkeypatch):
+    async def scenario():
+        async with api.lifespan(api.app):
+            api.app.state.runtime = make_ready(tmp_path, monkeypatch)
+            transport = httpx.ASGITransport(app=api.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                body = {"event": {"Event": {"info": "x"}}}
+                monkeypatch.setattr(api, "API_KEY", "")
+                assert (await client.post("/suggest", json=body)).status_code == 200
+                monkeypatch.setattr(api, "API_KEY", "s3cret")
+                assert (await client.post("/suggest", json=body)).status_code == 401
+                wrong = await client.post("/suggest", json=body, headers={"X-Api-Key": "nope"})
+                assert wrong.status_code == 401
+                right = await client.post("/suggest", json=body, headers={"X-Api-Key": "s3cret"})
+                assert right.status_code == 200
+                similar = await client.post(
+                    "/similar", json=body, headers={"X-Actor": "alice", "X-Api-Key": "nope"}
+                )
+                assert similar.status_code == 401
 
     asyncio.run(scenario())

@@ -13,7 +13,9 @@ from typing import Any
 def iter_jsonl(path: str | Path) -> Iterator[dict[str, Any]]:
     source = Path(path)
     opener = gzip.open if source.suffix == ".gz" else Path.open
-    kwargs = {"mode": "rt", "encoding": "utf-8"} if source.suffix == ".gz" else {"encoding": "utf-8"}
+    kwargs = (
+        {"mode": "rt", "encoding": "utf-8"} if source.suffix == ".gz" else {"encoding": "utf-8"}
+    )
     with opener(source, **kwargs) as f:
         for line_number, line in enumerate(f, start=1):
             if not line.strip():

@@ -30,7 +30,9 @@ def write_gzip(path: Path, rows: list[dict[str, Any]]) -> None:
     with temporary.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as zipped:
             for row in rows:
-                zipped.write((json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
+                zipped.write(
+                    (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+                )
     os.chmod(temporary, 0o600)
     os.replace(temporary, path)
     os.chmod(path, 0o600)
@@ -49,7 +51,12 @@ def main() -> int:
         bundle_id = str(bundle["bundle_id"])
         seed = seeds[bundle_id]
         scenarios = {str(row["variant"]): row for row in bundle["scenarios"]}
-        for variant in ("explicit_positive", "implicit_positive", "partial_positive", "same_family_confuser"):
+        for variant in (
+            "explicit_positive",
+            "implicit_positive",
+            "partial_positive",
+            "same_family_confuser",
+        ):
             scenario = scenarios[variant]
             expected = list(scenario["expected_tags"])
             if len(expected) != 1:

@@ -19,9 +19,7 @@ def digest(path: Path) -> str:
 
 
 def order_key(seed: int, row: dict[str, Any], repetition: int) -> bytes:
-    return hashlib.sha256(
-        f"{seed}\x1f{row.get('pair_id')}\x1f{repetition}".encode()
-    ).digest()
+    return hashlib.sha256(f"{seed}\x1f{row.get('pair_id')}\x1f{repetition}".encode()).digest()
 
 
 def write_gzip(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -29,7 +27,9 @@ def write_gzip(path: Path, rows: list[dict[str, Any]]) -> None:
     with temporary.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as zipped:
             for row in rows:
-                zipped.write((json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode())
+                zipped.write(
+                    (json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+                )
     os.chmod(temporary, 0o600)
     os.replace(temporary, path)
     os.chmod(path, 0o600)
@@ -76,7 +76,10 @@ def main() -> int:
         "synthetic_rows": len(synthetic_rows),
         "synthetic_unique_pairs": len(synthetic_unique),
         "synthetic_fraction": actual_fraction,
-        "maximum_synthetic_repetitions": max(int(row["oversample_repetition"]) for row in synthetic_rows) + 1,
+        "maximum_synthetic_repetitions": max(
+            int(row["oversample_repetition"]) for row in synthetic_rows
+        )
+        + 1,
         "seed": args.seed,
         "real_sha256": digest(args.real),
         "synthetic_sha256": digest(args.synthetic),

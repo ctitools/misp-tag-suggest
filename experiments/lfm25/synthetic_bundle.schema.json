@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/ctitools/misp-suggest/experiments/lfm25/synthetic_bundle.schema.json",
+  "$id": "https://github.com/ctitools/misp-tag-suggest/experiments/lfm25/synthetic_bundle.schema.json",
   "title": "Privacy-safe fictional MISP scenario bundle",
   "type": "object",
   "additionalProperties": false,

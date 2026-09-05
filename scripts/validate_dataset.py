@@ -83,11 +83,12 @@ def main() -> int:
         if len(splits) > 1:
             failures.append(f"Duplicate cluster {cluster_id} spans splits: {sorted(splits)}")
 
-    for earlier, later in zip(SPLITS, SPLITS[1:]):
+    for earlier, later in zip(SPLITS, SPLITS[1:], strict=False):
         earlier_range, later_range = date_ranges[earlier], date_ranges[later]
         if earlier_range and later_range and earlier_range[1] > later_range[0]:
             failures.append(
-                f"Non-monotonic dates: {earlier} max {earlier_range[1]} > {later} min {later_range[0]}"
+                f"Non-monotonic dates: {earlier} max {earlier_range[1]} "
+                f"> {later} min {later_range[0]}"
             )
 
     frequencies = Counter(label_counts.values())

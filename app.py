@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import os
 from contextlib import asynccontextmanager
@@ -19,6 +20,8 @@ ROOT = Path(__file__).resolve().parent
 ARTIFACTS = Path(os.getenv("RETRIEVAL_ARTIFACTS", ROOT / "artifacts/retrieval"))
 DEVICE = os.getenv("MODEL_DEVICE") or None
 SEARCH_DEPTH = int(os.getenv("SIMILAR_SEARCH_DEPTH", "5000"))
+# Optional shared secret for callers such as generic-ai-misp-module; unset = no check (loopback).
+API_KEY = os.getenv("SUGGEST_API_KEY", "")
 
 
 class EventRequest(BaseModel):
@@ -80,12 +83,10 @@ class RetrievalRuntime:
             "dataset_manifest_sha256": model.params["dataset_manifest_sha256"],
         }
 
-    def similar(
-        self, event: dict[str, Any], actor: str, limit: int
-    ) -> dict[str, Any]:
+    def similar(self, event: dict[str, Any], actor: str, limit: int) -> dict[str, Any]:
         model = self.model()
         rows = [self.input_row(event)]
-        similarities, indices = model._search(rows, k=SEARCH_DEPTH)
+        similarities, indices = model._search(rows, k=SEARCH_DEPTH)  # pylint: disable=protected-access
         visible: list[dict[str, Any]] = []
         denied = 0
         for score, index in zip(similarities[0], indices[0], strict=True):
@@ -131,13 +132,13 @@ class RetrievalRuntime:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    app.state.runtime = RetrievalRuntime()
-    app.state.inference_lock = asyncio.Lock()
+async def lifespan(application: FastAPI):
+    application.state.runtime = RetrievalRuntime()
+    application.state.inference_lock = asyncio.Lock()
     yield
 
 
-app = FastAPI(title="MISP Suggest", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="MISP Tag Suggest", version="0.3.0", lifespan=lifespan)
 
 
 def require_ready() -> None:
@@ -146,6 +147,11 @@ def require_ready() -> None:
             status_code=503,
             detail="Retrieval index not built; run `uv run python -m retrieval.build_index`",
         )
+
+
+def require_api_key(x_api_key: str | None) -> None:
+    if API_KEY and not hmac.compare_digest(x_api_key or "", API_KEY):
+        raise HTTPException(status_code=401, detail="X-Api-Key is missing or wrong")
 
 
 @app.get("/", include_in_schema=False)
@@ -158,25 +164,26 @@ def health():
     return {
         "status": "ok" if app.state.runtime.ready else "setup-required",
         "artifacts_ready": app.state.runtime.ready,
-        "model_loaded": app.state.runtime._model is not None,
+        "model_loaded": app.state.runtime._model is not None,  # pylint: disable=protected-access
         "read_only": True,
     }
 
 
 @app.post("/suggest")
-async def suggest(request: EventRequest):
+async def suggest(request: EventRequest, x_api_key: str | None = Header(default=None)):
+    require_api_key(x_api_key)
     require_ready()
     async with app.state.inference_lock:
-        return await asyncio.to_thread(
-            app.state.runtime.suggest, request.event, request.limit
-        )
+        return await asyncio.to_thread(app.state.runtime.suggest, request.event, request.limit)
 
 
 @app.post("/similar")
 async def similar(
     request: EventRequest,
     x_actor: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
 ):
+    require_api_key(x_api_key)
     require_ready()
     if not x_actor:
         raise HTTPException(status_code=401, detail="X-Actor is required")

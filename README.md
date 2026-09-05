@@ -1,4 +1,4 @@
-# misp-suggest
+# misp-tag-suggest
 
 A read-only MISP proof of concept using one method: **BGE semantic nearest-event retrieval**.
 
@@ -14,7 +14,7 @@ The repository contains all code needed to export your own MISP data and build t
 
 You need:
 
-- Linux and Python 3.12;
+- Linux or macOS and Python 3.14 (same floor as generic-ai-misp-module);
 - [`uv`](https://docs.astral.sh/uv/);
 - a MISP API key with **read-only** access to events, tags, taxonomies, and galaxies;
 - enough private disk space for your MISP export and generated embeddings.
@@ -24,8 +24,8 @@ The default installation deliberately uses CPU-only PyTorch, avoiding several gi
 ## 2. Install
 
 ```bash
-git clone https://github.com/ctitools/misp-suggest.git
-cd misp-suggest
+git clone https://github.com/ctitools/misp-tag-suggest.git
+cd misp-tag-suggest
 uv sync
 cp .env.example .env
 chmod 600 .env
@@ -34,11 +34,12 @@ chmod 600 .env
 Edit `.env`:
 
 ```dotenv
-MISP_URL=https://misp.example.org
-MISP_KEY=your-read-only-api-key
-MISP_VERIFY_TLS=true
+MISP_BASE_URL=https://misp.example.org
+MISP_API_KEY=your-read-only-api-key
+MISP_VERIFY_SSL=true
 ```
 
+The three keys are named exactly as in generic-ai-misp-module, so one `.env` can serve both.
 Keep TLS verification enabled. Never commit `.env` or put the API key in a command line.
 
 ## 3. Verify MISP export access
@@ -162,6 +163,9 @@ Open:
 
 A healthy, indexed service reports `"artifacts_ready": true`. The model loads lazily on the first inference request.
 
+Set `SUGGEST_API_KEY=<secret>` in the environment to require the header `X-Api-Key: <secret>` on
+`/suggest` and `/similar` (unset: no check, loopback demo only).
+
 ## 9. Request tag suggestions
 
 ```bash
@@ -237,7 +241,7 @@ The response includes similarity, event ID, title, date, historical tags, and `g
 - **PyTorch or device error** — use the documented CPU commands unless you intentionally installed a compatible CUDA build.
 - **No tag suggestions** — the system may be abstaining, or the indexed training events may have too few eligible tags. Inspect `manifest.json` and `training_metrics.json`.
 - **No similar events** — check `X-Actor` and `POC_ACL_FILE`; access is denied by default.
-- **TLS certificate error** — install the correct CA certificate. Set `MISP_VERIFY_TLS=false` only for an isolated test where the risk is understood.
+- **TLS certificate error** — install the correct CA certificate. Set `MISP_VERIFY_SSL=false` only for an isolated test where the risk is understood.
 - **Export interrupted** — rerun the same export command without `--overwrite`; it resumes completed pages.
 - **Out of memory** — keep export workers at one, use a smaller date range, and build the embedding index on a larger machine.
 
@@ -249,7 +253,37 @@ The tests use synthetic events and a local HTTP MISP double; they do not contact
 uv run pytest -q
 ```
 
-They cover export pagination and credential handling, taxonomy snapshotting, dataset construction and validation, index creation, retrieval voting and abstention, API contracts, ACL ordering, canonicalization, and repository hygiene. GitHub Actions runs the same suite on every push and pull request.
+They cover export pagination and credential handling, taxonomy snapshotting, dataset construction and validation, index creation, retrieval voting and abstention, API contracts, ACL ordering, canonicalization, and repository hygiene.
+
+Lint must be clean before a commit, same rules and tools as generic-ai-misp-module
+(`AGENTS.md`); GitHub Actions (`.github/workflows/checks.yml`) runs all four on every push:
+
+```bash
+uv run ruff check . && uv run ruff format --check .
+uv run pylint tagrec retrieval scripts app.py tests
+uvx semgrep scan --config p/python --config p/security-audit --error tagrec retrieval scripts app.py tests
+```
+
+`git config core.hooksPath .githooks` runs ruff on every commit. `experiments/` is research
+code: ruff only.
+
+## Used by generic-ai-misp-module
+
+[generic-ai-misp-module](https://github.com/ctitools/generic-ai-misp-module) calls this service
+over HTTP for its `tag_suggestion` use-case (`genai/suggest.py` there): it POSTs the MISP Event
+to `/suggest`, adds the returned tags to the event and tags the event `ai-computer-assisted`.
+The module reads `MISP_TAG_SUGGEST_URL` and `MISP_TAG_SUGGEST_API_KEY` from its `.env`.
+It relies on this contract, asserted in `tests/test_api.py`:
+
+```text
+GET  /health                  -> {"status", "artifacts_ready", "model_loaded", "read_only"}
+POST /suggest {"event": {"Event": {...}}, "limit": 1..10}
+                              -> {"suggestions": [{"tag", "score"}], "abstained",
+                                  "model_version", "dataset_manifest_sha256"}
+```
+
+Why HTTP and not `import`: this service needs torch, faiss and sentence-transformers; the
+module allows only `pymisp` as a dependency and runs inside the misp-modules server.
 
 ## Experimental research
 
@@ -287,4 +321,4 @@ synthetic-generation controls and diagnostics.
 - Existing event tags are excluded from model input.
 - `/similar` requires authorization before historical metadata is returned.
 - `.env`, `data/`, `artifacts/`, logs, and ACL files are excluded from Git.
-- Bind to `127.0.0.1`; add real authentication, TLS, rate limiting, and audited authorization before any network deployment.
+- Bind to `127.0.0.1`; `SUGGEST_API_KEY` is a shared secret, not authentication. Add TLS, rate limiting, and audited authorization before any network deployment.

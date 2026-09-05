@@ -37,11 +37,7 @@ def stable_rank(*parts: object, seed: int) -> str:
 def partial_text(text: str) -> str:
     lines = text.splitlines()
     info = [line for line in lines if line.startswith("[INFO]")]
-    evidence = [
-        line
-        for line in lines
-        if line.startswith("[ATTR]") or line.startswith("[OBJECT]")
-    ]
+    evidence = [line for line in lines if line.startswith("[ATTR]") or line.startswith("[OBJECT]")]
     take = max(1, math.ceil(0.25 * len(evidence))) if evidence else 0
     return "\n".join(info + evidence[:take])
 
@@ -57,9 +53,7 @@ def _secure_gzip(path: Path) -> tuple[BinaryIO, gzip.GzipFile]:
 
 def write_row(compressed: gzip.GzipFile, value: dict[str, Any]) -> None:
     compressed.write(
-        (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode(
-            "utf-8"
-        )
+        (json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
     )
 
 
@@ -106,10 +100,7 @@ def main() -> int:
         selected_per_tag[tag] = len(chosen)
         for index in chosen:
             selected_by_row[index].append(tag)
-    selected_partial = {
-        index
-        for _rank, index in sorted(partial_candidates)[: args.partial_pairs]
-    }
+    selected_partial = {index for _rank, index in sorted(partial_candidates)[: args.partial_pairs]}
     needed_rows = set(selected_by_row) | selected_partial
 
     args.out.mkdir(parents=True, exist_ok=True)

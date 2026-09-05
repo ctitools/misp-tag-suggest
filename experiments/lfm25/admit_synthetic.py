@@ -42,7 +42,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundles", type=Path, required=True)
     parser.add_argument("--seeds", type=Path, required=True)
-    parser.add_argument("--schema", type=Path, default=Path(__file__).with_name("synthetic_bundle.schema.json"))
+    parser.add_argument(
+        "--schema", type=Path, default=Path(__file__).with_name("synthetic_bundle.schema.json")
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     schema = json.loads(args.schema.read_text(encoding="utf-8"))
@@ -57,7 +59,9 @@ def main() -> int:
         if seed is None:
             errors.append("missing frozen seed")
         else:
-            errors.extend(validate_bundle(bundle, schema=schema, valid_tags=set(seed["candidate_tags"])))
+            errors.extend(
+                validate_bundle(bundle, schema=schema, valid_tags=set(seed["candidate_tags"]))
+            )
             errors.extend(validate_seed_contract(bundle, seed))
         errors.extend(leakage_errors(bundle))
         if errors:

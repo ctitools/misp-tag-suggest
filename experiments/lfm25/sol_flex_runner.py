@@ -27,9 +27,9 @@ from experiments.lfm25.validate_synthetic import validate_bundle, validate_seed_
 API_URL = "https://api.openai.com/v1/responses"
 MODEL = "gpt-5.6-sol"
 SERVICE_TIER = "flex"
-KEY_PATH = Path.home() / ".config/misp-suggest/openai_api_key"
-CACHE_KEY = "misp-suggest-fictional-bundles-v3-title-aligned"
-SAFETY_IDENTIFIER = "misp-suggest-research"
+KEY_PATH = Path.home() / ".config/misp-tag-suggest/openai_api_key"
+CACHE_KEY = "misp-tag-suggest-fictional-bundles-v3-title-aligned"
+SAFETY_IDENTIFIER = "misp-tag-suggest-research"
 TIMEOUT_SECONDS = 900.0
 MAX_FLEX_RETRIES = 2
 MAX_RATE_LIMIT_RETRIES = 5
@@ -97,9 +97,7 @@ class HTTPResult:
 
 
 class Transport(Protocol):
-    def __call__(
-        self, body: bytes, headers: dict[str, str], timeout: float
-    ) -> HTTPResult: ...
+    def __call__(self, body: bytes, headers: dict[str, str], timeout: float) -> HTTPResult: ...
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -107,9 +105,9 @@ def sha256_bytes(value: bytes) -> str:
 
 
 def canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def strict_response_schema(schema: dict[str, Any]) -> dict[str, Any]:
@@ -128,11 +126,16 @@ def strict_response_schema(schema: dict[str, Any]) -> dict[str, Any]:
             if "type" not in node:
                 examples = [node["const"]] if "const" in node else list(node.get("enum", []))
                 kinds = {
-                    "boolean" if isinstance(value, bool)
-                    else "integer" if isinstance(value, int)
-                    else "number" if isinstance(value, float)
-                    else "string" if isinstance(value, str)
-                    else "null" if value is None
+                    "boolean"
+                    if isinstance(value, bool)
+                    else "integer"
+                    if isinstance(value, int)
+                    else "number"
+                    if isinstance(value, float)
+                    else "string"
+                    if isinstance(value, str)
+                    else "null"
+                    if value is None
                     else ""
                     for value in examples
                 }
@@ -270,9 +273,7 @@ def direct_transport(api_key: str) -> Transport:
     def send(body: bytes, headers: dict[str, str], timeout: float) -> HTTPResult:
         request_headers = dict(headers)
         request_headers["Authorization"] = f"Bearer {api_key}"
-        request = urllib.request.Request(
-            API_URL, data=body, headers=request_headers, method="POST"
-        )
+        request = urllib.request.Request(API_URL, data=body, headers=request_headers, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return HTTPResult(
@@ -340,19 +341,13 @@ class AppendLedger:
         return spent + sum(reservations.values())
 
     def accepted_bundle_ids(self) -> set[str]:
-        return {
-            str(row["bundle_id"])
-            for row in self.rows()
-            if row.get("kind") == "accepted"
-        }
+        return {str(row["bundle_id"]) for row in self.rows() if row.get("kind") == "accepted"}
 
 
 def output_append(path: Path, bundle: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(path.parent, 0o700)
-    descriptor = os.open(
-        path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_CLOEXEC, 0o600
-    )
+    descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_CLOEXEC, 0o600)
     try:
         os.write(descriptor, canonical_bytes(bundle) + b"\n")
         os.fsync(descriptor)
@@ -388,9 +383,7 @@ def actual_cost(usage: dict[str, Any]) -> tuple[float, dict[str, int]]:
 def pessimistic_reservation(body: bytes, max_output_tokens: int) -> float:
     # UTF-8 bytes are a conservative upper bound on input token count. Treat every
     # input token as a cache write and every allowed output token as generated.
-    return (
-        len(body) * CACHE_WRITE_USD_PER_M + max_output_tokens * OUTPUT_USD_PER_M
-    ) / 1_000_000
+    return (len(body) * CACHE_WRITE_USD_PER_M + max_output_tokens * OUTPUT_USD_PER_M) / 1_000_000
 
 
 def make_request(
@@ -441,7 +434,12 @@ def make_request(
         },
     }
     body = canonical_bytes(request)
-    return request, body, sha256_bytes(prompt.encode()), sha256_bytes(canonical_bytes(response_schema))
+    return (
+        request,
+        body,
+        sha256_bytes(prompt.encode()),
+        sha256_bytes(canonical_bytes(response_schema)),
+    )
 
 
 def _error_text(result: HTTPResult) -> str:
@@ -467,7 +465,7 @@ def safe_http_error_facts(result: HTTPResult) -> dict[str, Any]:
             facts[header.replace("-", "_")] = result.headers[header]
     try:
         error = json.loads(result.body).get("error", {})
-    except (json.JSONDecodeError, AttributeError):
+    except json.JSONDecodeError, AttributeError:
         return facts
     if not isinstance(error, dict):
         return facts
@@ -499,7 +497,7 @@ def classify_http_error(result: HTTPResult) -> None:
         )
     try:
         code = json.loads(text).get("error", {}).get("code")
-    except (json.JSONDecodeError, AttributeError):
+    except json.JSONDecodeError, AttributeError:
         code = None
     if result.status_code == 429 and code == "rate_limit_exceeded":
         raise OrdinaryFlexRetry(
@@ -583,20 +581,21 @@ def extract_bundle(response: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
 
 def write_brake(path: Path, *, reason: str, stage: str, bundle_id: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    payload = canonical_bytes(
-        {
-            "schema_version": 1,
-            "halted": True,
-            "reason": reason,
-            "stage": stage,
-            "bundle_id": bundle_id,
-            "unix_time": time.time(),
-        }
-    ) + b"\n"
-    try:
-        descriptor = os.open(
-            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600
+    payload = (
+        canonical_bytes(
+            {
+                "schema_version": 1,
+                "halted": True,
+                "reason": reason,
+                "stage": stage,
+                "bundle_id": bundle_id,
+                "unix_time": time.time(),
+            }
         )
+        + b"\n"
+    )
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
     except FileExistsError:
         return
     try:
@@ -646,7 +645,7 @@ def run(
             )
             headers = {
                 "Content-Type": "application/json",
-                "User-Agent": "misp-suggest-sol-flex/1",
+                "User-Agent": "misp-tag-suggest-sol-flex/1",
             }
             response: dict[str, Any] | None = None
             reservation_id = ""
@@ -677,7 +676,7 @@ def run(
                         "unix_time": time.time(),
                     }
                 )
-                headers["Idempotency-Key"] = "misp-suggest-" + reservation_id
+                headers["Idempotency-Key"] = "misp-tag-suggest-" + reservation_id
                 result = transport(body, headers, TIMEOUT_SECONDS)
                 sent += 1
                 if result.status_code != 200:
@@ -719,7 +718,7 @@ def run(
                         if retry >= retry_limit:
                             raise EmergencyHalt(
                                 f"bounded {retry_signal.category} retries exhausted"
-                            )
+                            ) from retry_signal
                         sleep(delay)
                         continue
                 try:

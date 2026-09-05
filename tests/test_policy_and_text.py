@@ -28,7 +28,13 @@ def test_canonicalization_excludes_tags_and_galaxies():
             "Tag": [{"name": 'rsit:malicious-code="malware-distribution"'}],
             "Galaxy": [{"GalaxyCluster": [{"tag_name": 'misp-galaxy:malpedia="Secret"'}]}],
             "EventReport": [{"id": "1", "name": "Analysis", "content": "Uses **PowerShell**."}],
-            "Attribute": [{"category": "Network activity", "type": "url", "value": "hxxp://payload.example.org/a"}],
+            "Attribute": [
+                {
+                    "category": "Network activity",
+                    "type": "url",
+                    "value": "hxxp://payload.example.org/a",
+                }
+            ],
         }
     }
     text = canonicalize_event(event)

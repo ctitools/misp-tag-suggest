@@ -46,9 +46,9 @@ def verify_gate(
         if result["ci95_high"] < 0:
             raise RuntimeError(f"significant family regression: {family}")
     models = adoption["models"]
-    baseline_candidates = models["bge"]["cuts"]["native-only"]["analyst"][
-        "candidate_recall@50"
-    ]["macro_recall"]
+    baseline_candidates = models["bge"]["cuts"]["native-only"]["analyst"]["candidate_recall@50"][
+        "macro_recall"
+    ]
     challenger_candidates = models[model_name]["cuts"]["native-only"]["analyst"][
         "candidate_recall@50"
     ]["macro_recall"]
@@ -68,8 +68,7 @@ def verify_gate(
             classifier_cpu["p95_milliseconds"] / bge_cpu["p95_milliseconds"]
         ),
         "classifier_to_bge_rss_ratio": (
-            classifier_cpu["process_max_rss_kib"]
-            / bge_cpu["process_max_rss_kib"]
+            classifier_cpu["process_max_rss_kib"] / bge_cpu["process_max_rss_kib"]
         ),
     }
 

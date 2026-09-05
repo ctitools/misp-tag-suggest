@@ -13,7 +13,6 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-from tagrec.allowlist import parse_tag
 from tagrec.io import iter_jsonl, write_json_secure, write_jsonl_secure
 
 FAMILIES = ("incident-class", "attack-technique", "malware-family", "context")
@@ -83,8 +82,7 @@ def main() -> int:
     eligible = [
         row
         for row in tag_rows
-        if str(row.get("family")) in FAMILIES
-        and frequencies.get(str(row["tag"]), 0) >= 20
+        if str(row.get("family")) in FAMILIES and frequencies.get(str(row["tag"]), 0) >= 20
     ]
     by_family: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in eligible:
@@ -131,12 +129,11 @@ def main() -> int:
         selected = candidates[: args.candidates - 1]
         candidate_tags = [target_tag] + [str(row["tag"]) for row in selected]
         confuser = candidate_tags[1]
-        bundle_id = "syn-" + hashlib.sha256(
-            f"{args.seed}\x1f{target_tag}".encode()
-        ).hexdigest()[:16]
+        bundle_id = (
+            "syn-" + hashlib.sha256(f"{args.seed}\x1f{target_tag}".encode()).hexdigest()[:16]
+        )
         documents = {
-            tag: sanitize_public_document(str(by_tag[tag]["document"]))
-            for tag in candidate_tags
+            tag: sanitize_public_document(str(by_tag[tag]["document"])) for tag in candidate_tags
         }
         output_rows.append(
             {
@@ -155,8 +152,8 @@ def main() -> int:
                     "partial_positive": {"expected_tags": [target_tag], "relevance": 1},
                     "same_family_confuser": {"expected_tags": [confuser], "relevance": 0},
                     "unrelated_negative": {"expected_tags": [], "relevance": 0},
-                    "insufficient_evidence": {"expected_tags": [], "relevance": 0}
-                }
+                    "insufficient_evidence": {"expected_tags": [], "relevance": 0},
+                },
             }
         )
         family_counts[family] += 1

@@ -23,9 +23,7 @@ def test_top_labels_are_native_frequency_ranked_with_stable_ties() -> None:
         {"native_labels": ["tag-c", "tag-b"]},
         {"native_labels": ["tag-c", "excluded"]},
     ]
-    labels, counts = select_top_labels(
-        rows, limit=3, allowed={"tag-a", "tag-b", "tag-c"}
-    )
+    labels, counts = select_top_labels(rows, limit=3, allowed={"tag-a", "tag-b", "tag-c"})
     assert labels == ["tag-b", "tag-c", "tag-a"]
     assert counts == Counter({"tag-b": 2, "tag-c": 2, "tag-a": 1})
 
@@ -100,9 +98,7 @@ def test_test_access_gate_requires_quality_coverage_and_cpu() -> None:
     adoption = {
         "models": {
             "bge": {
-                "cuts": {
-                    "native-only": {"analyst": {"candidate_recall@50": {"macro_recall": 0.8}}}
-                }
+                "cuts": {"native-only": {"analyst": {"candidate_recall@50": {"macro_recall": 0.8}}}}
             },
             model_name: {
                 "cuts": {
@@ -129,8 +125,8 @@ def test_test_access_gate_requires_quality_coverage_and_cpu() -> None:
     }
     result = verify_gate(adoption, bge_cpu, classifier_cpu, model_name=model_name)
     assert result["precision_delta"] == 0.05
-    adoption["paired_comparisons"][f"{model_name}-minus-bge"][
-        "native-only/analyst/precision@3"
-    ]["delta"] = 0.02
+    adoption["paired_comparisons"][f"{model_name}-minus-bge"]["native-only/analyst/precision@3"][
+        "delta"
+    ] = 0.02
     with pytest.raises(RuntimeError, match="precision"):
         verify_gate(adoption, bge_cpu, classifier_cpu, model_name=model_name)

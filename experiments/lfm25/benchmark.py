@@ -10,7 +10,6 @@ import argparse
 import gc
 import hashlib
 import json
-import os
 import platform
 import resource
 import time
@@ -99,9 +98,7 @@ def search_topk(
         similarity_parts: list[np.ndarray] = []
         neighbor_parts: list[np.ndarray] = []
         for start in range(0, len(validation_embeddings), chunk_size):
-            query = torch.from_numpy(validation_embeddings[start : start + chunk_size]).to(
-                device
-            )
+            query = torch.from_numpy(validation_embeddings[start : start + chunk_size]).to(device)
             similarities, neighbors = torch.topk(query @ corpus.T, k=top_k, dim=1)
             similarity_parts.append(similarities.float().cpu().numpy())
             neighbor_parts.append(neighbors.int().cpu().numpy())
@@ -166,16 +163,12 @@ def evaluate_model(
     train_seconds = time.perf_counter() - train_started
     validation_started = time.perf_counter()
     validation_embeddings = np.asarray(
-        model.encode(
-            [str(row["text"]) for row in validation_rows], **validation_options
-        ),
+        model.encode([str(row["text"]) for row in validation_rows], **validation_options),
         dtype=np.float32,
     )
     validation_seconds = time.perf_counter() - validation_started
     embedding_dimensions = int(train_embeddings.shape[1])
-    peak_gpu_bytes = (
-        int(torch.cuda.max_memory_allocated()) if device.startswith("cuda") else 0
-    )
+    peak_gpu_bytes = int(torch.cuda.max_memory_allocated()) if device.startswith("cuda") else 0
     del model
     gc.collect()
     if device.startswith("cuda"):
@@ -199,11 +192,7 @@ def evaluate_model(
         for row in validation_rows
     ]
     native_truth = [
-        {
-            str(label)
-            for label in row.get("native_labels", [])
-            if str(label) in vocabulary
-        }
+        {str(label) for label in row.get("native_labels", []) if str(label) in vocabulary}
         for row in validation_rows
     ]
     slices = {
@@ -219,9 +208,7 @@ def evaluate_model(
     for truth_name, row_truth in (("all-labels", truth), ("native-only", native_truth)):
         cuts[truth_name] = {}
         for slice_name, selected in slices.items():
-            ranking, rows = ranking_metrics(
-                row_truth, predictions, selected=selected, top_k=3
-            )
+            ranking, rows = ranking_metrics(row_truth, predictions, selected=selected, top_k=3)
             candidates = candidate_recall_metrics(
                 row_truth,
                 neighbors,

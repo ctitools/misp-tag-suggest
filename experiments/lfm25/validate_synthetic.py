@@ -109,7 +109,17 @@ def _event_strings(event: dict[str, Any]) -> list[tuple[str, str]]:
     values = [("info", str(event.get("info", "")))]
     for index, attribute in enumerate(event.get("attributes", []) or []):
         indicator_type = str(attribute.get("type", ""))
-        if indicator_type not in {"domain", "hostname", "url", "ip-src", "ip-dst", "email-src", "email-dst", "sha256", "filename"}:
+        if indicator_type not in {
+            "domain",
+            "hostname",
+            "url",
+            "ip-src",
+            "ip-dst",
+            "email-src",
+            "email-dst",
+            "sha256",
+            "filename",
+        }:
             values.append((f"attributes.{index}.value", str(attribute.get("value", ""))))
         if "comment" in attribute:
             values.append((f"attributes.{index}.comment", str(attribute.get("comment", ""))))
@@ -157,8 +167,7 @@ def validate_seed_contract(bundle: dict[str, Any], seed: dict[str, Any]) -> list
             errors.append(f"seed contract changed: {key}")
     contracts = seed.get("fixed_label_contract", {}) or {}
     by_variant = {
-        str(scenario.get("variant", "")): scenario
-        for scenario in bundle.get("scenarios", []) or []
+        str(scenario.get("variant", "")): scenario for scenario in bundle.get("scenarios", []) or []
     }
     for variant, contract in contracts.items():
         scenario = by_variant.get(str(variant))
@@ -219,16 +228,24 @@ def validate_bundle(
             errors.append(f"{prefix}: expected_tags must be candidate-only")
         if variant in {"explicit_positive", "implicit_positive"}:
             if expected != [target] or relevance != 2 or not evidence:
-                errors.append(f"{prefix}: positive contract must be target/relevance-2 with evidence")
+                errors.append(
+                    f"{prefix}: positive contract must be target/relevance-2 with evidence"
+                )
         elif variant == "partial_positive":
             if expected != [target] or relevance != 1 or not evidence:
-                errors.append(f"{prefix}: partial contract must be target/relevance-1 with evidence")
+                errors.append(
+                    f"{prefix}: partial contract must be target/relevance-1 with evidence"
+                )
         elif variant == "same_family_confuser":
             if target in expected or not expected or relevance != 0 or not evidence:
-                errors.append(f"{prefix}: confuser must support a non-target candidate at relevance 0")
+                errors.append(
+                    f"{prefix}: confuser must support a non-target candidate at relevance 0"
+                )
         elif variant in {"unrelated_negative", "insufficient_evidence"}:
             if expected or relevance != 0 or evidence:
-                errors.append(f"{prefix}: negative/abstention contract must have no tag or evidence")
+                errors.append(
+                    f"{prefix}: negative/abstention contract must have no tag or evidence"
+                )
 
         for path in evidence:
             if not _path_exists(scenario, path):
@@ -257,7 +274,8 @@ def validate_bundle(
                 problem = _indicator_error(indicator_type, value)
                 if problem:
                     errors.append(
-                        f"{prefix}.event.objects[{object_index}].attributes[{attr_index}]: {problem}"
+                        f"{prefix}.event.objects[{object_index}]"
+                        f".attributes[{attr_index}]: {problem}"
                     )
     return errors
 

@@ -1,0 +1,6 @@
+#!/bin/sh
+# ruff on every commit; enable once with: git config core.hooksPath .githooks
+set -e
+cd "$(git rev-parse --show-toplevel)"
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .

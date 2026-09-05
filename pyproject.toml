@@ -1,8 +1,8 @@
 [project]
-name = "misp-suggest"
-version = "0.2.0"
+name = "misp-tag-suggest"
+version = "0.3.0"
 description = "Reproducible semantic retrieval and tag suggestions for MISP"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
   "datasketch>=2,<3",
   "fastapi>=0.116,<1",
@@ -24,6 +24,8 @@ dependencies = [
 dev = [
   "httpx>=0.28,<1",
   "pytest>=9,<10",
+  "ruff",
+  "pylint",
 ]
 training = [
   "accelerate>=1.12,<2",
@@ -37,3 +39,48 @@ torch = { index = "pytorch-cpu" }
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
+
+# Lint and test configuration: identical to generic-ai-misp-module (see AGENTS.md).
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# LLM prompt text and recorded HTTP bodies: reflowing them would change what is sent/compared
+"experiments/lfm25/sol_flex_runner.py" = ["E501"]
+"tests/test_sol_flex_runner.py" = ["E501"]
+
+[tool.pylint.main]
+py-version = "3.14"
+# experiments/ is research code: ruff only (AGENTS.md)
+ignore-paths = ["experiments"]
+
+[tool.pylint.messages_control]
+disable = [
+  "missing-module-docstring",
+  "missing-function-docstring",
+  "missing-class-docstring",
+  # research code kept as written; complexity metrics would force refactors without a test gain
+  "too-many-locals",
+  "too-many-branches",
+  "too-many-statements",
+  "too-many-return-statements",
+  "too-many-instance-attributes",
+  "too-many-arguments",
+  "too-many-positional-arguments",
+  "too-few-public-methods",
+  "duplicate-code",
+  # test fakes mirror the real signatures they replace
+  "unused-argument",
+]
+
+[tool.pylint.typecheck]
+ignored-modules = ["faiss"]  # SWIG wrappers: pylint misreads the signatures

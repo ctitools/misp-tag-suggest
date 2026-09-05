@@ -29,16 +29,12 @@ def weighted_vote_predictions(
         scores: dict[str, float] = defaultdict(float)
         weights = np.maximum(row_similarities[:neighbor_count], 0.0)
         denominator = float(weights.sum()) or 1.0
-        for weight, neighbor in zip(
-            weights, row_neighbors[:neighbor_count], strict=True
-        ):
+        for weight, neighbor in zip(weights, row_neighbors[:neighbor_count], strict=True):
             if weight <= 0 or neighbor < 0:
                 continue
             for label in train_labels[int(neighbor)]:
                 scores[str(label)] += float(weight) / denominator
-        predictions.append(
-            sorted(scores, key=lambda label: (-scores[label], label))[:top_k]
-        )
+        predictions.append(sorted(scores, key=lambda label: (-scores[label], label))[:top_k])
     return predictions
 
 
@@ -67,9 +63,7 @@ def ranking_metrics(
     truth_assignments = 0
     hits_total = 0
 
-    for include, row_truth, row_predictions in zip(
-        keep, truth, predictions, strict=True
-    ):
+    for include, row_truth, row_predictions in zip(keep, truth, predictions, strict=True):
         if not include or not row_truth:
             continue
         chosen = set(row_predictions[:top_k])
@@ -136,9 +130,7 @@ def candidate_recall_metrics(
         for family in FAMILIES:
             family_truth = {tag for tag in row_truth if label_family(tag) == family}
             if family_truth:
-                family_values[family].append(
-                    len(family_truth & candidates) / len(family_truth)
-                )
+                family_values[family].append(len(family_truth & candidates) / len(family_truth))
     return {
         "macro_recall": _mean(values),
         "events_with_truth": len(values),
