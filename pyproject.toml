@@ -16,7 +16,7 @@ dependencies = [
   "sentence-transformers>=5.2,<6",
   "tldextract>=5.3,<6",
   "torch>=2.2,<3",
-  "transformers>=4.57,<4.58",
+  "transformers>=4.57,<5.17",
   "uvicorn>=0.35,<1",
 ]
 
